@@ -37,7 +37,7 @@ int parse_cl(int argc, char* argv[]) {
   printf("output file name = '%s'\n", oFileName);
 }
 
-// Convert a String To a Number
+// Convert a String To a Number (take hex(x) and bin(#) into int)
 int toNum( char * pStr )
 {
   char * t_ptr;
@@ -132,15 +132,20 @@ int isOpcode(char* opcode) {
   return -1;  // The opcode is not valid.
 }
 
+/* readAndParse() Reads and parses one line of the assembly language file.
+  Returns DONE, OK, or EMPTY_LINE
+  DONE when the end of the file is encountered
+  OK when a line is successfully read and parsed
+  EMPTY_LINE when a blank line is encountered
+  The function passes back the label, opcode, and operands to input parameters
+*/
 #define MAX_LINE_LENGTH 255
 enum
 {
     DONE, OK, EMPTY_LINE
 };
-
-int readAndParse( FILE * pInfile, char * pLine, char ** pLabel, char
-** pOpcode, char ** pArg1, char ** pArg2, char ** pArg3, char ** pArg4
-)
+int readAndParse( FILE * pInfile, char * pLine, char ** pLabel, char** pOpcode, 
+char ** pArg1, char ** pArg2, char ** pArg3, char ** pArg4)
 {
   char * lRet, * lPtr;
   int i;
@@ -189,20 +194,38 @@ int readAndParse( FILE * pInfile, char * pLine, char ** pLabel, char
   return( OK );
 }
 
+int reg_to_binary(char* arg){
+  int reg;
+  if (arg[0] != 'r') {
+    printf("Error: register does not start with r\n");
+    exit(4);
+  }
+  if (strlen(arg) > 3) {
+    printf("Error: register val to long\n");
+    exit(4);
+  }
+  reg = atoi(++arg);
+  if (reg < 0 || reg > 7) {
+    printf("Error: register val out of range\n");
+    exit(4);
+  }
+  return reg;
+}
 
-
-int pass1(int argc, char* argv[]) {
+int pass1(char* input_file) {
   // variables for readAndParse()
-  char lLine[MAX_LINE_LENGTH + 1], *lLabel, *lOpcode, *lArg1,
-        *lArg2, *lArg3, *lArg4;
+  char lLine[MAX_LINE_LENGTH + 1], *lLabel, *lOpcode, *lArg1, *lArg2, *lArg3, *lArg4;
   int lRet;
   int linecount = 0;
+  FILE *lInfile;
+	lInfile = fopen( input_file, "r" );	/* open the input file */
+
   /* first pass */
   /* keep track of label/symbol to the symbol table */
 
   do
   {
-  lRet = readAndParse( infile, lLine, &lLabel,
+  lRet = readAndParse( lInfile, lLine, &lLabel,
       &lOpcode, &lArg1, &lArg2, &lArg3, &lArg4 );
   if( lRet != DONE && lRet != EMPTY_LINE )
   {
@@ -246,28 +269,251 @@ int pass1(int argc, char* argv[]) {
   } while( lRet != DONE );
 }
 
+int translate(char* opcode, char* arg1, char* arg2, char* arg3, char* arg4, int currentAddr){
+  /* translate each instruction to machine code */
+  /* return the machine code as an int */
+
+  int ret_hex;
+  int op_bin;
+  int dr, br, sr1, sr2, imm5, offset6, boffset6, offset9, offset11;
+
+  if(strcmp(opcode, "add") == 0) {
+    if (arg1 == NULL || arg2 == NULL || arg3 == NULL || arg4 != NULL) {
+      printf("Error: operand error\n");
+      exit(4);
+    }
+    op_bin = 0b0001;
+    dr = reg_to_binary(arg1);
+    sr1 = reg_to_binary(arg2);
+    if (arg3[0] == 'r') {
+      sr2 = reg_to_binary(arg3);
+      ret_hex = (op_bin << 12) | (dr << 9) | (sr1 << 6) | sr2;
+    }
+    else {
+      imm5 = toNum(arg3);
+      ret_hex = (op_bin << 12) | (dr << 9) | (sr1 << 6) | (1 << 5) | imm5;
+    }
+    return ret_hex;
+  }
+  else if(strcmp(opcode, "and") == 0){
+    if (arg1 == NULL || arg2 == NULL || arg3 == NULL || arg4 != NULL) {
+      printf("Error: operand error\n");
+      exit(4);
+    }
+    op_bin = 0b0101;
+    dr = reg_to_binary(arg1);
+    sr1 = reg_to_binary(arg2);
+    if (arg3[0] == 'r') {
+      sr2 = reg_to_binary(arg3);
+      ret_hex = (op_bin << 12) | (dr << 9) | (sr1 << 6) | sr2;
+    }
+    else {
+      imm5 = toNum(arg3);
+      ret_hex = (op_bin << 12) | (dr << 9) | (sr1 << 6) | (1 << 5) | imm5;
+    }
+    return ret_hex;
+  }
+  else if(strncmp(opcode, "br", 2) == 0){
+    if (strcmp(opcode, "brn") == 0) {
+      // return
+    }
+    else if (strcmp(opcode, "brz") == 0) {
+      // return
+    }
+    else if (strcmp(opcode, "brp") == 0) {
+      // return
+    }
+    else if (strcmp(opcode, "brnz") == 0) {
+      // return
+    }
+    else if (strcmp(opcode, "brnp") == 0) {
+      // return
+    }
+    else if (strcmp(opcode, "brzp") == 0) {
+      // return
+    }
+    else if (strcmp(opcode, "br") == 0) {
+      // return
+    }
+    else if (strcmp(opcode, "brnzp") == 0) {
+      // return
+    }
+  }
+  else if(strcmp(opcode, "halt") == 0){
+    return 0xF025; // trap 0x25
+  }
+  else if(strcmp(opcode, "jmp") == 0){
+    if (arg1 == NULL || arg2 != NULL || arg3 != NULL || arg4 != NULL) {
+      printf("Error: operand error\n");
+      exit(4);
+    }
+    op_bin = 0b1100;
+    br = reg_to_binary(arg1);
+    ret_hex = (op_bin << 12) | (br << 6);
+    return ret_hex;
+  }
+  else if(strcmp(opcode, "jsr") == 0){
+    if (arg1 == NULL || arg2 != NULL || arg3 != NULL || arg4 != NULL) {
+      printf("Error: operand error\n");
+      exit(4);
+    }
+    op_bin = 0b0100;
+    // get address from label;
+    for (int i = 0; i < symbolcount; i++) {
+      if (strcmp(symbolTable[i].label, arg1) == 0) {
+        int lab_address = currentAddr + (symbolTable[i].address * 2);
+        ret_hex = (op_bin << 12) | (1 << 11) | lab_address;
+        return ret_hex;
+      }
+      else {
+        printf("Error: label not found\n");
+        exit(4);
+      }
+    }
+  }
+  else if(strcmp(opcode, "jsrr") == 0){
+    if (arg1 == NULL || arg2 != NULL || arg3 != NULL || arg4 != NULL) {
+      printf("Error: operand error\n");
+      exit(4);
+    }
+    op_bin = 0b0100;
+    br = reg_to_binary(arg1);
+    ret_hex = (op_bin << 12) | (br << 6);
+    return ret_hex;
+  }
+  else if(strcmp(opcode, "ldb") == 0){
+    if (arg1 == NULL || arg2 == NULL || arg3 == NULL || arg4 != NULL) {
+      printf("Error: operand error\n");
+      exit(4);
+    }
+    op_bin = 0b0010;
+    dr = reg_to_binary(arg1);
+    sr1 = reg_to_binary(arg2);
+    boffset6 = toNum(arg3);
+    //TODO: check if boffset6 is in range
+    boffset6 &= 0x3f;
+    ret_hex = (op_bin << 12) | (dr << 9) | (sr1 << 6) | boffset6;
+    return ret_hex;  
+  }
+  else if(strcmp(opcode, "ldw") == 0){
+    if (arg1 == NULL || arg2 == NULL || arg3 == NULL || arg4 != NULL) {
+      printf("Error: operand error\n");
+      exit(4);
+    }
+    op_bin = 0b0110;
+    dr = reg_to_binary(arg1);
+    sr1 = reg_to_binary(arg2);
+    offset6 = toNum(arg3);
+    ret_hex = (op_bin << 12) | (dr << 9) | (sr1 << 6) | offset6;
+    return ret_hex;  
+  }
+  else if(strcmp(opcode, "lea") == 0){
+    if (arg1 == NULL || arg2 == NULL || arg3 == NULL || arg4 != NULL) {
+      printf("Error: operand error\n");
+      exit(4);
+    }
+    op_bin = 0b1110;
+    dr = reg_to_binary(arg1);
+    for (int i = 0; i < symbolcount; i++) {
+      if (strcmp(symbolTable[i].label, arg2) == 0) {
+        offset9 = symbolTable[i].address;
+        ret_hex = (op_bin << 12) | (dr << 9) | offset9;
+        return ret_hex;
+      }
+      else {
+        printf("Error: label not found\n");
+        exit(4);
+      }
+    }
+  }
+  else if(strcmp(opcode, "nop") == 0){
+    // return
+  }
+  else if(strcmp(opcode, "not") == 0){
+    // return
+  }
+  else if(strcmp(opcode, "ret") == 0){
+    if (arg1 != NULL || arg2 != NULL || arg3 != NULL || arg4 != NULL) {
+      printf("Error: operand error\n");
+      exit(4);
+    }
+    op_bin = 0b1100;
+    ret_hex = (op_bin << 12) | (7 << 6);
+    return ret_hex;
+  }
+  else if(strcmp(opcode, "lshf") == 0){
+    // return
+  }
+  else if(strcmp(opcode, "rshfl") == 0){
+    // return
+  }
+  else if(strcmp(opcode, "rshfa") == 0){
+    // return
+  }
+  else if(strcmp(opcode, "rti") == 0){
+    // return
+  }
+  else if(strcmp(opcode, "stb") == 0){
+    // return
+  }
+  else if(strcmp(opcode, "stw") == 0){
+    // return
+  }
+  else if(strcmp(opcode, "trap") == 0){
+    // return
+  }
+  else if(strcmp(opcode, "xor") == 0){
+    // return
+  }
+  else {
+    return -1;
+  }
+}
+
 int pass2(int argc, char* argv[]) {
   /* second pass */
   /* translate each instruction to machine code one by one */
 
   // variables for readAndParse()
-  char lLine[MAX_LINE_LENGTH + 1], *lLabel, *lOpcode, *lArg1,
-        *lArg2, *lArg3, *lArg4;
+  char lLine[MAX_LINE_LENGTH + 1], *lLabel, *lOpcode, *lArg1, *lArg2, *lArg3, *lArg4;
   int lRet;
 
-  int lInstr = 0;
-  // find .orig and get the starting address
+  int startAddr = 0; // placeholder for starting address
+  int currentAddr = 0; // current address
+
   do
   {
-  lRet = readAndParse( infile, lLine, &lLabel,
-      &lOpcode, &lArg1, &lArg2, &lArg3, &lArg4 );
+  lRet = readAndParse( infile, lLine, &lLabel, &lOpcode, &lArg1, &lArg2, &lArg3, &lArg4 );
   if( lRet != DONE && lRet != EMPTY_LINE )
   {
-    /// ...
+    // check if the opcode is valid
+    if (isOpcode(lOpcode) == -1) {
+      printf("Error: invalid opcode\n");
+      exit(4);
+    }
+    // find .orig and get the starting address
+    if (strcmp(lOpcode, ".orig" == 0)) {
+      if (startAddr != 0) {
+        printf("Error: two .orig found\n");
+        exit(4);
+      }
+      startAddr = toNum(lArg1);
+      currentAddr = startAddr;
+    }
+    // find .end and get the ending address
+    if (strcmp(lOpcode, ".end" == 0)) {
+      break;
+    }
+    // write translated instruction(int) to output file as hex
+    fprintf( outfile, "0x%.4X\n", translate(lOpcode, lArg1, lArg2, lArg3, lArg4, currentAddr) );	
+
+
+    currentAddr = currentAddr + 2; // increment current address
   }
+
+
   } while( lRet != DONE );
 
-	fprintf( outfile, "0x%.4X\n", lInstr );	//  where lInstr is declared as an int 
 
 }
 
@@ -287,8 +533,8 @@ int main(int argc, char* argv[]){
   parse_cl(argc, argv); // prints out program name, inputfile, and output file
   
   /* Do stuff with files */
-  pass1(argc, argv); // keep track of label/symbol to the symbol table
-  pass2(argc, argv); // translate each instruction to machine code one by one
+  pass1(argv[1]); // keep track of label/symbol to the symbol table
+  pass2(argv[1], argv[2]); // translate each instruction to machine code one by one
 
 
   fclose(infile);
