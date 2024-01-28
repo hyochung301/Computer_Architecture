@@ -106,6 +106,9 @@ exit(4);  /* This has been changed from error code 3 to error code 4, see clarif
 
 /* isOpcode() Checks if a string is an opcode, called by readAndParse()
   Returns 1 if the input string is a valid opcode, -1 otherwise.
+  {ADD, AND, BR(all 8 variations), HALT, JMP, JSR, JSRR, LDB, LDW,
+  LEA, NOP, NOT, RET, LSHF, RSHFL, RSHFA, RTI, STB, STW, TRAP, XOR}
+
 */
 int isOpcode(char* opcode) {
   if (
@@ -186,65 +189,14 @@ int readAndParse( FILE * pInfile, char * pLine, char ** pLabel, char
   return( OK );
 }
 
-/* To call readAndParse, you would use the following: */ 
-/* 
-func() 
-{
-    char lLine[MAX_LINE_LENGTH + 1], *lLabel, *lOpcode, *lArg1,
-        *lArg2, *lArg3, *lArg4;
-
-    int lRet;
-
-    FILE * lInfile;
-
-    lInfile = fopen( "data.in", "r" );	// open the input file 
-
-    do
-    {
-    lRet = readAndParse( lInfile, lLine, &lLabel,
-        &lOpcode, &lArg1, &lArg2, &lArg3, &lArg4 );
-    if( lRet != DONE && lRet != EMPTY_LINE )
-    {
-        ...
-    }
-    } while( lRet != DONE );
-}
 
 
-FILE * pOutfile;
-	pOutfile = fopen( "data.out", "w" );
-	
-	...
-
-	fprintf( pOutfile, "0x%.4X\n", lInstr );	//  where lInstr is declared as an int 
-*/
-
-
-int main(int argc, char* argv[]){
-
-
-  /* open the source file */
-  infile = fopen(argv[1], "r"); // open the input file 
-  outfile = fopen(argv[2], "w");
-  
-  if (!infile) {
-    printf("Error: Cannot open file %s\n", argv[1]);
-    exit(4);
-  }
-  if (!outfile) {
-    printf("Error: Cannot open file %s\n", argv[2]);
-    exit(4);
-  }
-
-  parse_cl(argc, argv); // test command line arguments (prints out program name, inputfile, and output file)
-  /* Do stuff with files */
-
-
+int pass1(int argc, char* argv[]) {
   // variables for readAndParse()
   char lLine[MAX_LINE_LENGTH + 1], *lLabel, *lOpcode, *lArg1,
         *lArg2, *lArg3, *lArg4;
   int lRet;
-
+  int linecount = 0;
   /* first pass */
   /* keep track of label/symbol to the symbol table */
 
@@ -254,12 +206,57 @@ int main(int argc, char* argv[]){
       &lOpcode, &lArg1, &lArg2, &lArg3, &lArg4 );
   if( lRet != DONE && lRet != EMPTY_LINE )
   {
-    //...
-  }
-  } while( lRet != DONE );
+    // check if the label is valid
+    if (!strcmp(lLabel, "getc") || (!strcmp(lLabel, "in")) || (!strcmp(lLabel, "out")) || (!strcmp(lLabel, "puts"))) {
+      printf("Error: label cannot be a trap vector\n");
+      exit(4);
+    }
+    if (isOpcode(lLabel) == 1) {
+      printf("Error: label cannot be an opcode\n");
+      exit(4);
+    }
+    if (lLabel[0] == 'x') {
+      printf("Error: label cannot start with an x\n");
+      exit(4);
+    }
+    if (strlen(lLabel) > MAX_LABEL_LEN) {
+      printf("Error: label cannot be longer than 20 characters\n");
+      exit(4);
+    }
+    for (int i = 0; i < strlen(lLabel) && lLabel[i] != '\0'; i++) {
+      if (!isalnum(lLabel[i])) {
+        printf("Error: label must be alphanumeric\n");
+        exit(4);
+      }
+    }
+    for (int i = 0; i < symbolcount; i++) {
+      if (strcmp(symbolTable[i].label, lLabel) == 0) {
+        printf("Error: label cannot be a duplicate\n");
+        exit(4);
+      }
+    }
 
+    // all condtions are met, add to symbol table
+    strcpy(symbolTable[symbolcount].label, lLabel); // set label to lLabel
+    symbolTable[symbolcount].address = linecount; // placeholder for address
+    symbolcount++; // increment symbolcount
+  }
+  linecount++; // increment linecount
+
+  } while( lRet != DONE );
+}
+
+int pass2(int argc, char* argv[]) {
   /* second pass */
   /* translate each instruction to machine code one by one */
+
+  // variables for readAndParse()
+  char lLine[MAX_LINE_LENGTH + 1], *lLabel, *lOpcode, *lArg1,
+        *lArg2, *lArg3, *lArg4;
+  int lRet;
+
+  int lInstr = 0;
+  // find .orig and get the starting address
   do
   {
   lRet = readAndParse( infile, lLine, &lLabel,
@@ -269,6 +266,30 @@ int main(int argc, char* argv[]){
     /// ...
   }
   } while( lRet != DONE );
+
+	fprintf( outfile, "0x%.4X\n", lInstr );	//  where lInstr is declared as an int 
+
+}
+
+
+int main(int argc, char* argv[]){
+  /* open the source file */
+  infile = fopen(argv[1], "r"); // open the input file 
+  outfile = fopen(argv[2], "w"); // open the output file, if it doesn't exist, create it
+  if (!infile) {
+    printf("Error: Cannot open file %s\n", argv[1]);
+    exit(4);
+  }
+  if (!outfile) {
+    printf("Error: Cannot open file %s\n", argv[2]);
+    exit(4);
+  }
+  parse_cl(argc, argv); // prints out program name, inputfile, and output file
+  
+  /* Do stuff with files */
+  pass1(argc, argv); // keep track of label/symbol to the symbol table
+  pass2(argc, argv); // translate each instruction to machine code one by one
+
 
   fclose(infile);
   fclose(outfile);
