@@ -269,6 +269,18 @@ int pass1(char* input_file) {
   } while( lRet != DONE );
 }
 
+int get_label_address(char* label) {
+  /* get the address of the label */
+  /* return the address as an int */
+  for (int i = 0; i < symbolcount; i++) {
+    if (strcmp(symbolTable[i].label, label) == 0) {
+      return symbolTable[i].address;
+    }
+  }
+  printf("Error: label not found\n");
+  exit(4);
+}
+
 int translate(char* opcode, char* arg1, char* arg2, char* arg3, char* arg4, int currentAddr){
   /* translate each instruction to machine code */
   /* return the machine code as an int */
@@ -317,30 +329,53 @@ int translate(char* opcode, char* arg1, char* arg2, char* arg3, char* arg4, int 
     return ret_hex;
   }
   else if(strncmp(opcode, "br", 2) == 0){
+    if (arg1 == NULL || arg2 == NULL || arg3 == NULL || arg4 != NULL) {
+      printf("Error: operand error\n");
+      exit(4);
+    }
+    int op_bin = 0b0000;
+    int nzp = 0b000;
     if (strcmp(opcode, "brn") == 0) {
-      // return
+      nzp = 0b100;
     }
     else if (strcmp(opcode, "brz") == 0) {
-      // return
+      nzp = 0b010;
     }
     else if (strcmp(opcode, "brp") == 0) {
-      // return
+      nzp = 0b001;
     }
     else if (strcmp(opcode, "brnz") == 0) {
-      // return
+      nzp = 0b110;
     }
     else if (strcmp(opcode, "brnp") == 0) {
-      // return
+      nzp = 0b101;
     }
     else if (strcmp(opcode, "brzp") == 0) {
-      // return
+      nzp = 0b011;
     }
     else if (strcmp(opcode, "br") == 0) {
-      // return
+      nzp = 0b111;
     }
     else if (strcmp(opcode, "brnzp") == 0) {
-      // return
+      nzp = 0b111;
     }
+    else {
+      printf("Error: invalid br opcode\n");
+      exit(4);
+    }
+    // get address from label;
+    for (int i = 0; i < symbolcount; i++) {
+      if (strcmp(symbolTable[i].label, arg1) == 0) {
+        int lab_address = (symbolTable[i].address * 2) + currentAddr;
+        int pc = currentAddr + 2;
+        int PCoffset9 = lab_address- pc;
+        PCoffset9 &= 0x1ff;
+        ret_hex = (op_bin << 12) | (nzp << 9) | PCoffset9;
+        return ret_hex;
+      }
+    }
+    printf("Error: label not found\n");
+    exit(4);
   }
   else if(strcmp(opcode, "halt") == 0){
     if (arg1 != NULL || arg2 != NULL || arg3 != NULL || arg4 != NULL) {
@@ -374,8 +409,8 @@ int translate(char* opcode, char* arg1, char* arg2, char* arg3, char* arg4, int 
       if (strcmp(symbolTable[i].label, arg1) == 0) {
         int lab_address = (symbolTable[i].address * 2) + currentAddr;
         int pc = currentAddr + 2;
-        int PCoffset11 = (lab_address- pc) / 2;
-
+        int PCoffset11 = lab_address- pc;
+        PCoffset11 &= 0x7ff;
         ret_hex = (op_bin << 12) | (1 << 11) | PCoffset11;
         return ret_hex;
       }
@@ -432,13 +467,17 @@ int translate(char* opcode, char* arg1, char* arg2, char* arg3, char* arg4, int 
     }
     int op_bin = 0b1110;
     int dr = reg_to_binary(arg1);
-    // TODO: fix label and address calculations (PCoffset11)
+    // TODO: fix label and address calculations (PCoffset9)
     for (int i = 0; i < symbolcount; i++) {
       if (strcmp(symbolTable[i].label, arg1) == 0) {
         int lab_address = (symbolTable[i].address * 2) + currentAddr;
         int pc = currentAddr + 2;
-        int PCoffset9 = (lab_address- pc) / 2;
-
+        int PCoffset9 = lab_address- pc;
+        if ((PCoffset9 > 255) || (PCoffset9 < -256)){
+          printf("Error: PCoffset9 out of range\n");
+          exit(4);
+        };
+        PCoffset9 &= 0x1ff;
         ret_hex = (op_bin << 12) | (dr << 9) | PCoffset9;
         return ret_hex;
       }
@@ -449,8 +488,13 @@ int translate(char* opcode, char* arg1, char* arg2, char* arg3, char* arg4, int 
     }
   }
   else if(strcmp(opcode, "nop") == 0){
-    // return
-  }
+    if (arg1 != NULL || arg2 != NULL || arg3 != NULL || arg4 != NULL) {
+      printf("Error: operand error\n");
+      exit(4);
+    }
+    ret_hex = 0x0000;
+    return ret_hex;
+    }
   else if(strcmp(opcode, "not") == 0){
     if (arg1 == NULL || arg2 == NULL || arg3 != NULL || arg4 != NULL) {
       printf("Error: operand error\n");
@@ -618,6 +662,10 @@ int pass2(int argc, char* argv[]) {
     if (strcmp(lOpcode, ".orig" == 0)) {
       if (startAddr != 0) {
         printf("Error: two .orig found\n");
+        exit(4);
+      }
+      if (startAddr % 2 != 0) {
+        printf("Error: starting address must be even\n");
         exit(4);
       }
       startAddr = toNum(lArg1);
