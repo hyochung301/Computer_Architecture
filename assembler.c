@@ -127,7 +127,9 @@ int isOpcode(char* opcode) {
             strcmp(opcode, "lshf") == 0 || strcmp(opcode, "rshfl") == 0 ||
             strcmp(opcode, "rshfa") == 0 || strcmp(opcode, "rti") == 0 ||
             strcmp(opcode, "stb") == 0 || strcmp(opcode, "stw") == 0 ||
-            strcmp(opcode, "trap") == 0 || strcmp(opcode, "xor") == 0
+            strcmp(opcode, "trap") == 0 || strcmp(opcode, "xor") == 0 ||
+            strcmp(opcode, ".orig") == 0 || strcmp(opcode, ".end") == 0 ||
+            strcmp(opcode, ".fill") == 0
             ) {
         return 1;  // The opcode is valid.
     }
@@ -215,65 +217,65 @@ int reg_to_binary(char* arg){
 }
 
 int pass1(char* input_file) {
-  printf("first pass\n");
-  // variables for readAndParse()
-  char lLine[MAX_LINE_LENGTH + 1], *lLabel, *lOpcode, *lArg1, *lArg2, *lArg3, *lArg4;
-  int lRet;
-  int linecount = 0;
-  FILE *lInfile;
-  lInfile = fopen( input_file, "r" );	/* open the input file */
+    printf("first pass\n");
+    // variables for readAndParse()
+    char lLine[MAX_LINE_LENGTH + 1], *lLabel, *lOpcode, *lArg1, *lArg2, *lArg3, *lArg4;
+    int lRet;
+    int linecount = 0;
+    FILE *lInfile;
+    lInfile = fopen( input_file, "r" );	/* open the input file */
 
-  /* first pass */
-  /* keep track of label/symbol to the symbol table */
+    /* first pass */
+    /* keep track of label/symbol to the symbol table */
 
-  do
-  {
-      lRet = readAndParse( lInfile, lLine, &lLabel,
-                            &lOpcode, &lArg1, &lArg2, &lArg3, &lArg4 );
-      printf("label: %s\n", lLabel);
-      if( lRet != DONE && lRet != EMPTY_LINE && strcmp(lLabel, "") != 0)
-      {
-          // check if the label is valid
-          if (!strcmp(lLabel, "getc") || (!strcmp(lLabel, "in")) || (!strcmp(lLabel, "out")) || (!strcmp(lLabel, "puts"))) {
-              printf("Error: label cannot be a trap vector\n");
-              exit(4);
-          }
-          if (isOpcode(lLabel) == 1) {
-              printf("Error: label cannot be an opcode\n");
-              exit(4);
-          }
-          if (lLabel[0] == 'x') {
-              printf("Error: label cannot start with an x\n");
-              exit(4);
-          }
-          if (strlen(lLabel) > MAX_LABEL_LEN) {
-              printf("Error: label cannot be longer than 20 characters\n");
-              exit(4);
-          }
-          for (int i = 0; i < strlen(lLabel) && lLabel[i] != '\0'; i++) {
-              if (!isalnum(lLabel[i])) {
-                  printf("Error: label must be alphanumeric\n");
-                  exit(4);
-              }
-          }
-          for (int i = 0; i < symbolcount; i++) {
-              if (strcmp(symbolTable[i].label, lLabel) == 0) {
-                  printf("Error: label cannot be a duplicate\n");
-                  exit(4);
-              }
-          }
-
-
-          // all condtions are met, add to symbol table
-          strcpy(symbolTable[symbolcount].label, lLabel); // set label to lLabel
-          symbolTable[symbolcount].address = linecount; // placeholder for address
-          symbolcount++; // increment symbolcount
-      }
-      linecount++; // increment linecount
+    do
+    {
+        lRet = readAndParse( lInfile, lLine, &lLabel,
+                             &lOpcode, &lArg1, &lArg2, &lArg3, &lArg4 );
+        // printf("label: %s\n", lLabel);
+        if( lRet != DONE && lRet != EMPTY_LINE && strcmp(lLabel, "") != 0)
+        {
+            // check if the label is valid
+            if (!strcmp(lLabel, "getc") || (!strcmp(lLabel, "in")) || (!strcmp(lLabel, "out")) || (!strcmp(lLabel, "puts"))) {
+                printf("Error: label cannot be a trap vector\n");
+                exit(4);
+            }
+            if (isOpcode(lLabel) == 1) {
+                printf("Error: label cannot be an opcode\n");
+                exit(4);
+            }
+            if (lLabel[0] == 'x') {
+                printf("Error: label cannot start with an x\n");
+                exit(4);
+            }
+            if (strlen(lLabel) > MAX_LABEL_LEN) {
+                printf("Error: label cannot be longer than 20 characters\n");
+                exit(4);
+            }
+            for (int i = 0; i < strlen(lLabel) && lLabel[i] != '\0'; i++) {
+                if (!isalnum(lLabel[i])) {
+                    printf("Error: label must be alphanumeric\n");
+                    exit(4);
+                }
+            }
+            for (int i = 0; i < symbolcount; i++) {
+                if (strcmp(symbolTable[i].label, lLabel) == 0) {
+                    printf("Error: label cannot be a duplicate\n");
+                    exit(4);
+                }
+            }
 
 
-  } while( lRet != DONE );
-  return -1;
+            // all condtions are met, add to symbol table
+            strcpy(symbolTable[symbolcount].label, lLabel); // set label to lLabel
+            symbolTable[symbolcount].address = linecount; // placeholder for address
+            symbolcount++; // increment symbolcount
+        }
+        linecount++; // increment linecount
+
+
+    } while( lRet != DONE );
+    return -1;
 }
 
 int get_label_address(char* label) {
@@ -293,11 +295,16 @@ int translate(char* opcode, char* arg1, char* arg2, char* arg3, char* arg4, int 
     /* return the machine code as an int */
 
     int ret_hex;
+    printf("opcode: %s\n", opcode);
+    // printf("arg1: '%s', arg2: '%s', arg3: '%s', arg4: '%s'\n", arg1, arg2, arg3, arg4);
     if(strcmp(opcode, "add") == 0) {
-        if (arg1 == NULL || arg2 == NULL || arg3 == NULL || arg4 != NULL) {
-            printf("Error: operand error\n");
-            exit(4);
-        }
+      if (arg1 == NULL || strcmp(arg1, "") == 0 || arg1[0] != 'r' ||
+      arg2 == NULL || strcmp(arg2, "") == 0 || arg2[0] != 'r' ||
+      arg3 == NULL || strcmp(arg3, "") == 0 || (arg3[0] != 'r' && arg3[0] != '#' && arg3[0] != 'x') ||
+      arg4 == NULL || strcmp(arg4, "") != 0) {
+      printf("Error: operand error\n");
+      exit(4);
+      }
         int op_bin = 0b0001;
         int dr = reg_to_binary(arg1);
         int sr1 = reg_to_binary(arg2);
@@ -313,149 +320,160 @@ int translate(char* opcode, char* arg1, char* arg2, char* arg3, char* arg4, int 
         return ret_hex;
     }
     else if(strcmp(opcode, "and") == 0){
-        if (arg1 == NULL || arg2 == NULL || arg3 == NULL || arg4 != NULL) {
-            printf("Error: operand error\n");
-            exit(4);
-        }
-        int op_bin = 0b0101;
-        int dr = reg_to_binary(arg1);
-        int sr1 = reg_to_binary(arg2);
-        if (arg3[0] == 'r') {
-            int sr2 = reg_to_binary(arg3);
-            ret_hex = (op_bin << 12) | (dr << 9) | (sr1 << 6) | sr2;
-        }
-        else {
-            int imm5 = toNum(arg3);
-            // TODO: check if imm5 is in range
-            if(!(imm5 <= 15) || !(imm5 >= -16)) {
-                printf("Error: imm5 out of range\n");
-                exit(4);
-            }
-            ret_hex = (op_bin << 12) | (dr << 9) | (sr1 << 6) | (1 << 5) | imm5;
-        }
-        return ret_hex;
+      if (arg1 == NULL || strcmp(arg1, "") == 0 || arg1[0] != 'r' ||
+      arg2 == NULL || strcmp(arg2, "") == 0 || arg2[0] != 'r' ||
+      arg3 == NULL || strcmp(arg3, "") == 0 || (arg3[0] != 'r' && arg3[0] != '#' && arg3[0] != 'x') ||
+      arg4 == NULL || strcmp(arg4, "") != 0) {
+      printf("Error: operand error\n");
+      exit(4);
+      }
+      int op_bin = 0b0101;
+      int dr = reg_to_binary(arg1);
+      int sr1 = reg_to_binary(arg2);
+      if (arg3[0] == 'r') {
+          int sr2 = reg_to_binary(arg3);
+          ret_hex = (op_bin << 12) | (dr << 9) | (sr1 << 6) | sr2;
+      }
+      else {
+          int imm5 = toNum(arg3);
+          // TODO: check if imm5 is in range
+          if(!(imm5 <= 15) || !(imm5 >= -16)) {
+              printf("Error: imm5 out of range\n");
+              exit(4);
+          }
+          ret_hex = (op_bin << 12) | (dr << 9) | (sr1 << 6) | (1 << 5) | imm5;
+      }
+      return ret_hex;
     }
     else if(strncmp(opcode, "br", 2) == 0){
-        if (arg1 == NULL || arg2 == NULL || arg3 == NULL || arg4 != NULL) {
-            printf("Error: operand error\n");
-            exit(4);
-        }
-        int op_bin = 0b0000;
-        int nzp = 0b000;
-        if (strcmp(opcode, "brn") == 0) {
-            nzp = 0b100;
-        }
-        else if (strcmp(opcode, "brz") == 0) {
-            nzp = 0b010;
-        }
-        else if (strcmp(opcode, "brp") == 0) {
-            nzp = 0b001;
-        }
-        else if (strcmp(opcode, "brnz") == 0) {
-            nzp = 0b110;
-        }
-        else if (strcmp(opcode, "brnp") == 0) {
-            nzp = 0b101;
-        }
-        else if (strcmp(opcode, "brzp") == 0) {
-            nzp = 0b011;
-        }
-        else if (strcmp(opcode, "br") == 0) {
-            nzp = 0b111;
-        }
-        else if (strcmp(opcode, "brnzp") == 0) {
-            nzp = 0b111;
-        }
-        else {
-            printf("Error: invalid br opcode\n");
-            exit(4);
-        }
-        // get address from label;
-        for (int i = 0; i < symbolcount; i++) {
-            if (strcmp(symbolTable[i].label, arg1) == 0) {
-                int lab_address = (symbolTable[i].address * 2) + currentAddr;
-                int pc = currentAddr + 2;
-                int PCoffset9 = lab_address- pc;
-                PCoffset9 &= 0x1ff;
-                ret_hex = (op_bin << 12) | (nzp << 9) | PCoffset9;
-                return ret_hex;
-            }
-        }
-        printf("Error: label not found\n");
+     if (arg1 == NULL || strcmp(arg1, "") == 0 ||
+        arg2 != NULL && strcmp(arg2, "") != 0 ||
+        arg3 != NULL && strcmp(arg3, "") != 0 ||
+        arg4 != NULL && strcmp(arg4, "") != 0) {
+        printf("Error: operand error\n");
         exit(4);
+      }
+      int op_bin = 0b0000;
+      int nzp = 0b000;
+      if (strcmp(opcode, "brn") == 0) {
+          nzp = 0b100;
+      }
+      else if (strcmp(opcode, "brz") == 0) {
+          nzp = 0b010;
+      }
+      else if (strcmp(opcode, "brp") == 0) {
+          nzp = 0b001;
+      }
+      else if (strcmp(opcode, "brnz") == 0) {
+          nzp = 0b110;
+      }
+      else if (strcmp(opcode, "brnp") == 0) {
+          nzp = 0b101;
+      }
+      else if (strcmp(opcode, "brzp") == 0) {
+          nzp = 0b011;
+      }
+      else if (strcmp(opcode, "br") == 0) {
+          nzp = 0b111;
+      }
+      else if (strcmp(opcode, "brnzp") == 0) {
+          nzp = 0b111;
+      }
+      else {
+          printf("Error: invalid br opcode\n");
+          exit(4);
+      }
+      int lab_address = get_label_address(arg1);
+      lab_address = (lab_address * 2) + currentAddr;
+      int pc = currentAddr + 2;
+      int PCoffset9 = lab_address - pc;
+      PCoffset9 &= 0x1ff;
+      ret_hex = (op_bin << 12) | (nzp << 9) | PCoffset9;
+      return ret_hex;
     }
     else if(strcmp(opcode, "halt") == 0){
-        if (arg1 != NULL || arg2 != NULL || arg3 != NULL || arg4 != NULL) {
-            printf("Error: operand error\n");
-            exit(4);
-        }
-        int op_bin = 0b1111;
-        ret_hex = (op_bin << 12) | 0x25;
-        return ret_hex; // trap 0x25
+      if ((arg1 != NULL && strcmp(arg1, "") != 0) ||
+      (arg2 != NULL && strcmp(arg2, "") != 0) ||
+      (arg3 != NULL && strcmp(arg3, "") != 0) ||
+      (arg4 != NULL && strcmp(arg4, "") != 0)) {
+      printf("Error: operand error\n");
+      exit(4);
+      }
+      int op_bin = 0b1111;
+      ret_hex = (op_bin << 12) | 0x25;
+      return ret_hex; // trap 0x25
     }
     else if(strcmp(opcode, "jmp") == 0){
-        if (arg1 == NULL || arg2 != NULL || arg3 != NULL || arg4 != NULL) {
-            printf("Error: operand error\n");
-            exit(4);
-        }
+        if (arg1 == NULL || strcmp(arg1, "") == 0 ||
+        arg2 != NULL && strcmp(arg2, "") != 0 ||
+        arg3 != NULL && strcmp(arg3, "") != 0 ||
+        arg4 != NULL && strcmp(arg4, "") != 0) {
+        printf("Error: operand error\n");
+        exit(4);
+      }
         int op_bin = 0b1100;
         int br = reg_to_binary(arg1);
         ret_hex = (op_bin << 12) | (br << 6);
         return ret_hex;
     }
     else if(strcmp(opcode, "jsr") == 0){
-        if (arg1 == NULL || arg2 != NULL || arg3 != NULL || arg4 != NULL) {
-            printf("Error: operand error\n");
-            exit(4);
-        }
-        int op_bin = 0b0100;
-        // get address from label;
+      if (arg1 == NULL || strcmp(arg1, "") == 0 ||
+        arg2 != NULL && strcmp(arg2, "") != 0 ||
+        arg3 != NULL && strcmp(arg3, "") != 0 ||
+        arg4 != NULL && strcmp(arg4, "") != 0) {
+        printf("Error: operand error\n");
+        exit(4);
+      }
+      int op_bin = 0b0100;
+      // get address from label;
 
-        // TODO: fix label and address calculations (PCoffset11)
-        for (int i = 0; i < symbolcount; i++) {
-            if (strcmp(symbolTable[i].label, arg1) == 0) {
-                int lab_address = (symbolTable[i].address * 2) + currentAddr;
-                int pc = currentAddr + 2;
-                int PCoffset11 = lab_address- pc;
-                PCoffset11 &= 0x7ff;
-                ret_hex = (op_bin << 12) | (1 << 11) | PCoffset11;
-                return ret_hex;
-            }
-            else {
-                printf("Error: label not found\n");
-                exit(4);
-            }
-        }
+      // TODO: fix label and address calculations (PCoffset11)
+      int lab_address = get_label_address(arg1);
+      lab_address = (lab_address * 2) + currentAddr;
+      int pc = currentAddr + 2;
+      int PCoffset11 = lab_address- pc;
+      PCoffset11 &= 0x7ff;
+      ret_hex = (op_bin << 12) | (1 << 11) | PCoffset11;
+      return ret_hex;
     }
     else if(strcmp(opcode, "jsrr") == 0){
-        if (arg1 == NULL || arg2 != NULL || arg3 != NULL || arg4 != NULL) {
-            printf("Error: operand error\n");
-            exit(4);
-        }
+        if (arg1 == NULL || strcmp(arg1, "") == 0 || arg1[0] != 'r' ||
+        arg2 != NULL && strcmp(arg2, "") != 0 ||
+        arg3 != NULL && strcmp(arg3, "") != 0 ||
+        arg4 != NULL && strcmp(arg4, "") != 0) {
+        printf("Error: operand error\n");
+        exit(4);
+    }
         int op_bin = 0b0100;
         int br = reg_to_binary(arg1);
         ret_hex = (op_bin << 12) | (br << 6);
         return ret_hex;
     }
     else if(strcmp(opcode, "ldb") == 0){
-        if (arg1 == NULL || arg2 == NULL || arg3 == NULL || arg4 != NULL) {
-            printf("Error: operand error\n");
-            exit(4);
-        }
-        int op_bin = 0b0010;
-        int dr = reg_to_binary(arg1);
-        int sr1 = reg_to_binary(arg2);
-        int boffset6 = toNum(arg3);
-        //TODO: check if boffset6 is in range
-        boffset6 &= 0x3f;
-        ret_hex = (op_bin << 12) | (dr << 9) | (sr1 << 6) | boffset6;
-        return ret_hex;
+      if (arg1 == NULL || strcmp(arg1, "") == 0 || arg1[0] != 'r' ||
+      arg2 == NULL || strcmp(arg2, "") == 0 || arg2[0] != 'r' ||
+      arg3 == NULL || strcmp(arg3, "") == 0 || (arg3[0] != '#' && arg3[0] != 'x') ||
+      arg4 == NULL || strcmp(arg4, "") != 0) {
+      printf("Error: operand error\n");
+      exit(4);
+      }
+      int op_bin = 0b0010;
+      int dr = reg_to_binary(arg1);
+      int sr1 = reg_to_binary(arg2);
+      int boffset6 = toNum(arg3);
+      //TODO: check if boffset6 is in range
+      boffset6 &= 0x3f;
+      ret_hex = (op_bin << 12) | (dr << 9) | (sr1 << 6) | boffset6;
+      return ret_hex;
     }
     else if(strcmp(opcode, "ldw") == 0){
-        if (arg1 == NULL || arg2 == NULL || arg3 == NULL || arg4 != NULL) {
-            printf("Error: operand error\n");
-            exit(4);
-        }
+      if (arg1 == NULL || strcmp(arg1, "") == 0 || arg1[0] != 'r' ||
+      arg2 == NULL || strcmp(arg2, "") == 0 || arg2[0] != 'r' ||
+      arg3 == NULL || strcmp(arg3, "") == 0 || (arg3[0] != '#' && arg3[0] != 'x') ||
+      arg4 == NULL || strcmp(arg4, "") != 0) {
+      printf("Error: operand error\n");
+      exit(4);
+      }
         int op_bin = 0b0110;
         int dr = reg_to_binary(arg1);
         int sr1 = reg_to_binary(arg2);
@@ -468,44 +486,47 @@ int translate(char* opcode, char* arg1, char* arg2, char* arg3, char* arg4, int 
         return ret_hex;
     }
     else if(strcmp(opcode, "lea") == 0){
-        if (arg1 == NULL || arg2 == NULL || arg3 == NULL || arg4 != NULL) {
-            printf("Error: operand error\n");
-            exit(4);
-        }
-        int op_bin = 0b1110;
-        int dr = reg_to_binary(arg1);
-        // TODO: fix label and address calculations (PCoffset9)
-        for (int i = 0; i < symbolcount; i++) {
-            if (strcmp(symbolTable[i].label, arg1) == 0) {
-                int lab_address = (symbolTable[i].address * 2) + currentAddr;
-                int pc = currentAddr + 2;
-                int PCoffset9 = lab_address- pc;
-                if ((PCoffset9 > 255) || (PCoffset9 < -256)){
-                    printf("Error: PCoffset9 out of range\n");
-                    exit(4);
-                };
-                PCoffset9 &= 0x1ff;
-                ret_hex = (op_bin << 12) | (dr << 9) | PCoffset9;
-                return ret_hex;
-            }
-            else {
-                printf("Error: label not found\n");
-                exit(4);
-            }
-        }
+      if (arg1 == NULL || strcmp(arg1, "") == 0 || arg1[0] != 'r' ||
+      arg2 == NULL || strcmp(arg2, "") == 0 ||
+      arg3 != NULL && strcmp(arg3, "") != 0 ||
+      arg4 != NULL && strcmp(arg4, "") != 0) {
+      printf("Error: operand error\n");
+      exit(4);
+      }
+      int op_bin = 0b1110;
+      int dr = reg_to_binary(arg1);
+      // TODO: fix label and address calculations (PCoffset9)
+
+      int lab_address = get_label_address(arg2);
+      lab_address = (lab_address * 2) + currentAddr;
+      int pc = currentAddr + 2;
+      int PCoffset9 = lab_address - pc;
+      if ((PCoffset9 > 255) || (PCoffset9 < -256)){
+        printf("Error: PCoffset9 out of range\n");
+        exit(4);
+      };
+      PCoffset9 &= 0x1ff;
+      ret_hex = (op_bin << 12) | (dr << 9) | PCoffset9;
+      return ret_hex;
     }
     else if(strcmp(opcode, "nop") == 0){
-        if (arg1 != NULL || arg2 != NULL || arg3 != NULL || arg4 != NULL) {
-            printf("Error: operand error\n");
-            exit(4);
-        }
+        if ((arg1 != NULL && strcmp(arg1, "") != 0) ||
+          (arg2 != NULL && strcmp(arg2, "") != 0) ||
+          (arg3 != NULL && strcmp(arg3, "") != 0) ||
+          (arg4 != NULL && strcmp(arg4, "") != 0)) {
+          printf("Error: operand error\n");
+          exit(4);
+        }           
         ret_hex = 0x0000;
         return ret_hex;
     }
     else if(strcmp(opcode, "not") == 0){
-        if (arg1 == NULL || arg2 == NULL || arg3 != NULL || arg4 != NULL) {
-            printf("Error: operand error\n");
-            exit(4);
+        if (arg1 == NULL || strcmp(arg1, "") == 0 || arg1[0] != 'r' ||
+        arg2 == NULL || strcmp(arg2, "") == 0 || arg2[0] != 'r' ||
+        arg3 != NULL && strcmp(arg3, "") != 0 ||
+        arg4 != NULL && strcmp(arg4, "") != 0) {
+        printf("Error: operand error\n");
+        exit(4);
         }
         int op_bin = 0b1001;
         int dr = reg_to_binary(arg1);
@@ -513,19 +534,25 @@ int translate(char* opcode, char* arg1, char* arg2, char* arg3, char* arg4, int 
         ret_hex = (op_bin << 12) | (dr << 9) | (sr << 6) | (1 << 5) | (0b11111);
     }
     else if(strcmp(opcode, "ret") == 0){
-        if (arg1 != NULL || arg2 != NULL || arg3 != NULL || arg4 != NULL) {
-            printf("Error: operand error\n");
-            exit(4);
+        if ((arg1 != NULL && strcmp(arg1, "") != 0) ||
+        (arg2 != NULL && strcmp(arg2, "") != 0) ||
+        (arg3 != NULL && strcmp(arg3, "") != 0) ||
+        (arg4 != NULL && strcmp(arg4, "") != 0)) {
+        printf("Error: operand error\n");
+        exit(4);
         }
         int op_bin = 0b1100;
         ret_hex = (op_bin << 12) | (7 << 6);
         return ret_hex;
     }
     else if(strcmp(opcode, "lshf") == 0){
-        if (arg1 == NULL || arg2 == NULL || arg3 == NULL || arg4 != NULL) {
-            printf("Error: operand error\n");
-            exit(4);
-        }
+        if (arg1 == NULL || strcmp(arg1, "") == 0 || arg1[0] != 'r' ||
+    arg2 == NULL || strcmp(arg2, "") == 0 || arg2[0] != 'r' ||
+    arg3 == NULL || strcmp(arg3, "") == 0 || (arg3[0] != '#' && arg3[0] != 'x') ||
+    arg4 == NULL || strcmp(arg4, "") != 0) {
+    printf("Error: operand error\n");
+    exit(4);
+}
         int op_bin = 0b1101;
         int dr = reg_to_binary(arg1);
         int sr1 = reg_to_binary(arg2);
@@ -537,10 +564,13 @@ int translate(char* opcode, char* arg1, char* arg2, char* arg3, char* arg4, int 
         ret_hex = (op_bin << 12) | (dr << 9) | (sr1 << 6) | amount4;
     }
     else if(strcmp(opcode, "rshfl") == 0){
-        if (arg1 == NULL || arg2 == NULL || arg3 == NULL || arg4 != NULL) {
-            printf("Error: operand error\n");
-            exit(4);
-        }
+        if (arg1 == NULL || strcmp(arg1, "") == 0 || arg1[0] != 'r' ||
+    arg2 == NULL || strcmp(arg2, "") == 0 || arg2[0] != 'r' ||
+    arg3 == NULL || strcmp(arg3, "") == 0 || (arg3[0] != '#' && arg3[0] != 'x') ||
+    arg4 == NULL || strcmp(arg4, "") != 0) {
+    printf("Error: operand error\n");
+    exit(4);
+}
         int op_bin = 0b1101;
         int dr = reg_to_binary(arg1);
         int sr = reg_to_binary(arg2);
@@ -553,10 +583,13 @@ int translate(char* opcode, char* arg1, char* arg2, char* arg3, char* arg4, int 
         return ret_hex;
     }
     else if(strcmp(opcode, "rshfa") == 0){
-        if (arg1 == NULL || arg2 == NULL || arg3 == NULL || arg4 != NULL) {
-            printf("Error: operand error\n");
-            exit(4);
-        }
+        if (arg1 == NULL || strcmp(arg1, "") == 0 || arg1[0] != 'r' ||
+    arg2 == NULL || strcmp(arg2, "") == 0 || arg2[0] != 'r' ||
+    arg3 == NULL || strcmp(arg3, "") == 0 || (arg3[0] != '#' && arg3[0] != 'x') ||
+    arg4 == NULL || strcmp(arg4, "") != 0) {
+    printf("Error: operand error\n");
+    exit(4);
+}
         int op_bin = 0b1101;
         int dr = reg_to_binary(arg1);
         int sr = reg_to_binary(arg2);
@@ -568,19 +601,25 @@ int translate(char* opcode, char* arg1, char* arg2, char* arg3, char* arg4, int 
         return ret_hex;
     }
     else if(strcmp(opcode, "rti") == 0){
-        if (arg1 != NULL || arg2 != NULL || arg3 != NULL || arg4 != NULL) {
-            printf("Error: operand error\n");
-            exit(4);
-        }
+      if ((arg1 != NULL && strcmp(arg1, "") != 0) ||
+      (arg2 != NULL && strcmp(arg2, "") != 0) ||
+      (arg3 != NULL && strcmp(arg3, "") != 0) ||
+      (arg4 != NULL && strcmp(arg4, "") != 0)) {
+      printf("Error: operand error\n");
+      exit(4);
+      }
         int op_bin = 0b1000;
         ret_hex = (op_bin << 12);
         return ret_hex;
     }
     else if(strcmp(opcode, "stb") == 0){
-        if (arg1 == NULL || arg2 == NULL || arg3 == NULL || arg4 != NULL) {
-            printf("Error: operand error\n");
-            exit(4);
-        }
+        if (arg1 == NULL || strcmp(arg1, "") == 0 || arg1[0] != 'r' ||
+    arg2 == NULL || strcmp(arg2, "") == 0 || arg2[0] != 'r' ||
+    arg3 == NULL || strcmp(arg3, "") == 0 || (arg3[0] != '#' && arg3[0] != 'x') ||
+    arg4 == NULL || strcmp(arg4, "") != 0) {
+    printf("Error: operand error\n");
+    exit(4);
+}
         int op_bin = 0b0011;
         int sr = reg_to_binary(arg1);
         int br = reg_to_binary(arg2);
@@ -589,9 +628,13 @@ int translate(char* opcode, char* arg1, char* arg2, char* arg3, char* arg4, int 
         return ret_hex;
     }
     else if(strcmp(opcode, "stw") == 0){
-        if (arg1 == NULL || arg2 == NULL || arg3 == NULL || arg4 != NULL) {
-            printf("Error: operand error\n");
-        }
+        if (arg1 == NULL || strcmp(arg1, "") == 0 || arg1[0] != 'r' ||
+    arg2 == NULL || strcmp(arg2, "") == 0 || arg2[0] != 'r' ||
+    arg3 == NULL || strcmp(arg3, "") == 0 || (arg3[0] != '#' && arg3[0] != 'x') ||
+    arg4 == NULL || strcmp(arg4, "") != 0) {
+    printf("Error: operand error\n");
+    exit(4);
+}
         int op_bin = 0b0111;
         int sr = reg_to_binary(arg1);
         int br = reg_to_binary(arg2);
@@ -604,9 +647,13 @@ int translate(char* opcode, char* arg1, char* arg2, char* arg3, char* arg4, int 
         return ret_hex;
     }
     else if(strcmp(opcode, "trap") == 0){
-        if (arg1 == NULL || arg2 != NULL || arg3 != NULL || arg4 != NULL) {
-            printf("Error: operand error\n");
-        }
+        if ((arg1 == NULL || strcmp(arg1, "") == 0 || (arg1[0] != '#' && arg1[0] != 'x')) ||
+    arg2 != NULL && strcmp(arg2, "") != 0 ||
+    arg3 != NULL && strcmp(arg3, "") != 0 ||
+    arg4 != NULL && strcmp(arg4, "") != 0) {
+    printf("Error: operand error\n");
+    exit(4);
+}
         int op_bin = 0b1111;
         int trapvect8 = toNum(arg1);
         if(!(trapvect8 <= 255) || !(trapvect8 >= 0)){
@@ -617,9 +664,13 @@ int translate(char* opcode, char* arg1, char* arg2, char* arg3, char* arg4, int 
         return ret_hex;
     }
     else if(strcmp(opcode, "xor") == 0){
-        if (arg1 == NULL || arg2 == NULL || arg3 == NULL || arg4 != NULL) {
-            printf("Error: operand error\n");
-        }
+        if (arg1 == NULL || strcmp(arg1, "") == 0 || arg1[0] != 'r' ||
+    arg2 == NULL || strcmp(arg2, "") == 0 || arg2[0] != 'r' ||
+    arg3 == NULL || strcmp(arg3, "") == 0 || (arg3[0] != 'r' && arg3[0] != '#' && arg3[0] != 'x') ||
+    arg4 != NULL && strcmp(arg4, "") != 0) {
+    printf("Error: operand error\n");
+    exit(4);
+}
         int op_bin = 0b1001;
         int dr = reg_to_binary(arg1);
         int sr1 = reg_to_binary(arg2);
@@ -664,6 +715,7 @@ int pass2(char* input_file, char* output_file) {
         lRet = readAndParse( lInfile, lLine, &lLabel, &lOpcode, &lArg1, &lArg2, &lArg3, &lArg4 );
         if( lRet != DONE && lRet != EMPTY_LINE )
         {
+            printf("opcode: %s\n", lOpcode);
             // check if the opcode is valid
             if (isOpcode(lOpcode) == -1) {
                 printf("Error: invalid opcode\n");
@@ -687,7 +739,9 @@ int pass2(char* input_file, char* output_file) {
                 break;
             }
             // write translated instruction(int) to output file as hex
-            fprintf( pOutfile, "0x%.4X\n", translate(lOpcode, lArg1, lArg2, lArg3, lArg4, currentAddr) );
+            int instruction = translate(lOpcode, lArg1, lArg2, lArg3, lArg4, currentAddr);
+            printf("instruction: 0x%.4X\n", instruction);
+            fprintf( pOutfile, "0x%.4X\n", instruction);
             currentAddr += 0x0002; // increment current address
         }
 
@@ -712,8 +766,13 @@ int main(int argc, char* argv[]){
 
     /* Do stuff with files */
     pass1(argv[1]); // keep track of label/symbol to the symbol table
-    pass2(argv[1], argv[2]); // translate each instruction to machine code one by one
 
+    printf("symbol table:\n"); // print out symbol table
+    for (int i = 0; i < symbolcount; i++) {
+        printf("label: %s, address: %d\n", symbolTable[i].label, symbolTable[i].address);
+    }
+    pass2(argv[1], argv[2]); // translate each instruction to machine code one by one
+    printf("pass 2 done\n");
 
     fclose(infile);
     fclose(outfile);
