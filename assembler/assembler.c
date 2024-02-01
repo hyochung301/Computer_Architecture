@@ -237,44 +237,44 @@ int pass1(char* input_file) {
         printf("linecount: %d\n", linecount);
         if( lRet != DONE && lRet != EMPTY_LINE )
         {
-          if (strcmp(lLabel, "") != 0) {
-            // check if the label is valid
-            if (!strcmp(lLabel, "getc") || (!strcmp(lLabel, "in")) || (!strcmp(lLabel, "out")) || (!strcmp(lLabel, "puts"))) {
-                printf("Error: label cannot be a trap vector\n");
-                exit(4);
-            }
-            if (isOpcode(lLabel) == 1) {
-                printf("Error: label cannot be an opcode\n");
-                exit(4);
-            }
-            if (lLabel[0] == 'x') {
-                printf("Error: label cannot start with an x\n");
-                exit(4);
-            }
-            if (strlen(lLabel) > MAX_LABEL_LEN) {
-                printf("Error: label cannot be longer than 20 characters\n");
-                exit(4);
-            }
-            for (int i = 0; i < strlen(lLabel) && lLabel[i] != '\0'; i++) {
-                if (!isalnum(lLabel[i])) {
-                    printf("Error: label must be alphanumeric\n");
+            if (strcmp(lLabel, "") != 0) {
+                // check if the label is valid
+                if (!strcmp(lLabel, "getc") || (!strcmp(lLabel, "in")) || (!strcmp(lLabel, "out")) || (!strcmp(lLabel, "puts"))) {
+                    printf("Error: label cannot be a trap vector\n");
                     exit(4);
                 }
-            }
-            for (int i = 0; i < symbolcount; i++) {
-                if (strcmp(symbolTable[i].label, lLabel) == 0) {
-                    printf("Error: label cannot be a duplicate\n");
+                if (isOpcode(lLabel) == 1) {
+                    printf("Error: label cannot be an opcode\n");
                     exit(4);
                 }
-            }
-            // all condtions are met, add to symbol table
-            strcpy(symbolTable[symbolcount].label, lLabel); // set label to lLabel
-                        printf("linecount when added: %d\n", linecount);
+                if (lLabel[0] == 'x') {
+                    printf("Error: label cannot start with an x\n");
+                    exit(4);
+                }
+                if (strlen(lLabel) > MAX_LABEL_LEN) {
+                    printf("Error: label cannot be longer than 20 characters\n");
+                    exit(4);
+                }
+                for (int i = 0; i < strlen(lLabel) && lLabel[i] != '\0'; i++) {
+                    if (!isalnum(lLabel[i])) {
+                        printf("Error: label must be alphanumeric\n");
+                        exit(4);
+                    }
+                }
+                for (int i = 0; i < symbolcount; i++) {
+                    if (strcmp(symbolTable[i].label, lLabel) == 0) {
+                        printf("Error: label cannot be a duplicate\n");
+                        exit(4);
+                    }
+                }
+                // all condtions are met, add to symbol table
+                strcpy(symbolTable[symbolcount].label, lLabel); // set label to lLabel
+                printf("linecount when added: %d\n", linecount);
 
-            symbolTable[symbolcount].address = linecount; // placeholder for address
-            symbolcount++; // increment symbolcount
-          }
-          linecount++; // increment linecount
+                symbolTable[symbolcount].address = linecount; // placeholder for address
+                symbolcount++; // increment symbolcount
+            }
+            linecount++; // increment linecount
         }
 
 
@@ -319,7 +319,7 @@ int translate(char* opcode, char* arg1, char* arg2, char* arg3, char* arg4, int 
         else {
             int imm5 = toNum(arg3);
             // TODO: check if imm5 is in range
-            
+
             if(!(imm5 <= 15) || !(imm5 >= -16)) {
                 printf("Error: imm5 out of range\n");
                 exit(4);
@@ -396,14 +396,14 @@ int translate(char* opcode, char* arg1, char* arg2, char* arg3, char* arg4, int 
             exit(4);
         }
         int lab_address = get_label_address(arg1);
-                printf("lab address: %x\n", lab_address);
+        printf("lab address: %x\n", lab_address);
         printf("currentAddr: %x\n", currentAddr);
         lab_address = (lab_address * 2) + startAddr;
         int pc = currentAddr + 2;
         int PCoffset9 = (lab_address - pc)/2;
         if ((PCoffset9 > 255) || (PCoffset9 < -256)){
-          printf("Error: PCoffset9 out of range\n");
-          exit(4);
+            printf("Error: PCoffset9 out of range\n");
+            exit(4);
         };
         PCoffset9 &= 0x1ff;
         ret_hex = (op_bin << 12) | (nzp << 9) | PCoffset9;
@@ -485,7 +485,6 @@ int translate(char* opcode, char* arg1, char* arg2, char* arg3, char* arg4, int 
         int dr = reg_to_binary(arg1);
         int sr1 = reg_to_binary(arg2);
         int boffset6 = toNum(arg3);
-        //TODO: check if boffset6 is in range
         boffset6 &= 0x3f;
         ret_hex = (op_bin << 12) | (dr << 9) | (sr1 << 6) | boffset6;
         return ret_hex;
@@ -502,10 +501,12 @@ int translate(char* opcode, char* arg1, char* arg2, char* arg3, char* arg4, int 
         int dr = reg_to_binary(arg1);
         int sr1 = reg_to_binary(arg2);
         int offset6 = toNum(arg3);
+        //TODO: offset6 negative check, handle
         if(!(offset6 <= 31) || !(offset6 >= -32)){
             printf("Error: offset6 out of range\n");
             exit(4);
         }
+        offset6 &= 0x3f;
         ret_hex = (op_bin << 12) | (dr << 9) | (sr1 << 6) | offset6;
         return ret_hex;
     }
@@ -560,7 +561,14 @@ int translate(char* opcode, char* arg1, char* arg2, char* arg3, char* arg4, int 
         int op_bin = 0b1001;
         int dr = reg_to_binary(arg1);
         int sr = reg_to_binary(arg2);
+        if ((sr <0) || (sr > 7)){
+            printf("Error: sr out of range\n");
+            exit(4);
+        }
         ret_hex = (op_bin << 12) | (dr << 9) | (sr << 6) | (1 << 5) | (0b11111);
+        return ret_hex;
+
+        //
     }
     else if(strcmp(opcode, "ret") == 0){
         if ((arg1 != NULL && strcmp(arg1, "") != 0) ||
@@ -591,6 +599,7 @@ int translate(char* opcode, char* arg1, char* arg2, char* arg3, char* arg4, int 
             exit(4);
         }
         ret_hex = (op_bin << 12) | (dr << 9) | (sr1 << 6) | amount4;
+        return ret_hex;
     }
     else if(strcmp(opcode, "rshfl") == 0){
         if (arg1 == NULL || strcmp(arg1, "") == 0 || arg1[0] != 'r' ||
@@ -653,6 +662,11 @@ int translate(char* opcode, char* arg1, char* arg2, char* arg3, char* arg4, int 
         int sr = reg_to_binary(arg1);
         int br = reg_to_binary(arg2);
         int boffset6 = toNum(arg3);
+        if(!(boffset6 <= 31) || !(boffset6 >= -32)){
+            printf("Error: offset6 out of range\n");
+            exit(4);
+        }
+        boffset6 &= 0x3f;
         ret_hex = (op_bin << 12) | (sr << 9) | (br << 6) | boffset6;
         return ret_hex;
     }
@@ -672,6 +686,7 @@ int translate(char* opcode, char* arg1, char* arg2, char* arg3, char* arg4, int 
             printf("Error: offset6 out of range\n");
             exit(4);
         }
+        offset6 &= 0x3f;
         ret_hex = (op_bin << 12) | (sr << 9) | (br << 6) | offset6;
         return ret_hex;
     }
@@ -742,10 +757,11 @@ int translate(char* opcode, char* arg1, char* arg2, char* arg3, char* arg4, int 
             exit(4);
         }
         ret_hex = toNum(arg1);
-        if (ret_hex > 0x7FFF || ret_hex < -0x8000)  {
+        /*if (ret_hex > 0x7FFF || ret_hex < -0x8000)  {
             printf("Error: .fill value out of range\n");
             exit(3);
         }
+        */
         ret_hex &= 0xFFFF;
         return ret_hex;
     }
@@ -793,6 +809,11 @@ int pass2(char* input_file, char* output_file) {
                     exit(4);
                 }
                 startAddr = toNum(lArg1);
+                // printf("0x%.4X ", startAddr);
+                // printf("larg1: %s\n", lArg1);
+                // printf("lLine: %s\n", lLine);
+                // printf("lOpcode: %s\n", lOpcode);
+
                 currentAddr = startAddr - 2;
             }
             // find .end and get the ending address
@@ -801,7 +822,7 @@ int pass2(char* input_file, char* output_file) {
             }
             // write translated instruction(int) to output file as hex
             int instruction = translate(lOpcode, lArg1, lArg2, lArg3, lArg4, startAddr, currentAddr);
-            printf("instruction: 0x%.4X\n", instruction);
+            // printf("instruction: 0x%.4X\n", instruction);
             fprintf( pOutfile, "0x%.4X\n", instruction);
             currentAddr += 0x0002; // increment current address
         }
