@@ -19,7 +19,7 @@ BRnzp R2XNEG ;3014
 R2NEGATIVE ADD R6, R6, #1
 
 R2XNEG ADD R0, R1, R2  ; Perform addition 3016
-STB R0, R4, x2  ; Store sum (R0) in X3102 (X3100 + 2)
+STW R0, R4, x2  ; Store sum (R0) in X3102 (X3100 + 2)
 
 NOT R7, R5 ; Check for overflow if R1 and R2 have the same sign
 ADD R7, R7, #1
@@ -37,16 +37,17 @@ R0NEGATIVE ADD R7, R7, #1
 R0XNEG NOT R3, R5
 ADD R3, R3, #1
 ADD R3, R3, R7
-BRz DONE
+BRz NOOVERFLOW
 BRnzp OVERFLOW
 
-OVERFLOW AND R3, R3, #0      ; Prepare 1 at R3 to put in the register
+OVERFLOW AND R3, R3, #0 ; Prepare 1 at R3 to put in the register
 ADD R3, R3, #1
-STB R3, R4, x3 ; Store 1 in X3103 to indicate overflow
+STW R3, R4, x3 ; Store 1 in X3103 to indicate overflow
 BRnzp DONE
 
+NOOVERFLOW AND R3, R3, #0 ; Prepare 0 at R3 to put in the register
+STW R3, R4, x3 ; Store 0 in X3103 to indicate no overflow
 
-DONE ADD R0, R0, #0 ; Dummy code
-HALT
-ADR .FILL x3100
+DONE HALT
+ADR .FILL x3100 
 .END
