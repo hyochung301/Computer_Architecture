@@ -400,7 +400,230 @@ int main(int argc, char *argv[]) {
 
 /***************************************************************/
 
+// Q1. How to solve storing into memory [0] and [1]?
+// Q2. How to LSHF and RSHF?
+// Q3. How to implement SEXT?
+// Q4. When to use Low16bit (in which conditions)?
+// Q5. What changes in JSR and JSRR?
+// Q6. Difference between CURRENT_LATCHES and NEXT_LATCHES?
+// Q7. If there is no setcc() on pdf, it does not set the condition codes?
 
+#define DR_MASKED(x) (((x) & 0x0E00) >> 9)
+#define SR1_MASKED(x) (((x) & 0x01C0) >> 6)
+#define SR2_MASKED(x) ((x) & 0x0007)
+#define BaseR_MASKED(x) (((x) & 0x01E0) >> 6)
+
+void setcc(int cond){
+    if (cond < 0){
+        NEXT_LATCHES.N = 1;
+        NEXT_LATCHES.Z = 0;
+        NEXT_LATCHES.P = 0;
+    }
+    else if (cond == 0){
+        NEXT_LATCHES.N = 0;
+        NEXT_LATCHES.Z = 1;
+        NEXT_LATCHES.P = 0;
+    }
+    else{
+        NEXT_LATCHES.N = 0;
+        NEXT_LATCHES.Z = 0;
+        NEXT_LATCHES.P = 1;
+    }
+}
+
+int LSHF(int num, int shift) {
+    return num << shift;
+}
+
+int RSHF(int num, int shift, int arith) {
+    // arith = 1 for arithmetic right shift, 0 for logical right shift
+    if (arith) {
+        if (num & 0x8000) {
+            // If the number is negative, fill the leftmost bits with 1s after the shift
+            num = num - 65536; // Convert to negative integer value
+        }
+    }
+    num = num >> shift;
+    return num;
+}
+
+int SEXT(int num, int bits){
+    int pos = bits - 1;  // calculate the position of the MSB
+    int mask = 1 << pos; // create a mask with the MSB set
+    if (num & mask) { // if the MSB is set
+        num = num | ~((1 << bits) - 1); // sign extend
+    }
+    return num;
+}
+
+void ADD(int instruction){
+    int DR = CURRENT_LATCHES.REGS[DR_MASKED(instruction)]; // contains the value
+    int SR1 = CURRENT_LATCHES.REGS[SR1_MASKED(instruction)];
+    int bit_5 = (((instruction) & 0x0020) >> 5);
+    if(bit_5 == 0){
+        int SR2 = CURRENT_LATCHES.REGS[SR2_MASKED(instruction)];
+        DR = Low16bits(SR1 + SR2);
+    }
+    else{
+        int imm5 = ((instruction) & 0x001F);
+        DR = Low16bits(SR1 + SEXT(imm5, 5));
+    }
+    CURRENT_LATCHES.REGS[DR_MASKED(instruction)] = DR;
+    setcc(DR);
+}
+
+void AND(int instruction){
+    int DR = CURRENT_LATCHES.REGS[DR_MASKED(instruction)]; // contains the value
+    int SR1 = CURRENT_LATCHES.REGS[SR1_MASKED(instruction)];
+    int bit_5 = (((instruction) & 0x0020) >> 5);
+    if(bit_5 == 0){
+        int SR2 = CURRENT_LATCHES.REGS[SR2_MASKED(instruction)];
+        DR = Low16bits(SR1 & SR2);
+    }
+    else{
+        int imm5 = ((instruction) & 0x001F);
+        DR = Low16bits(SR1 & SEXT(imm5, 5));
+    }
+    CURRENT_LATCHES.REGS[DR_MASKED(instruction)] = DR;
+    setcc(DR);
+}
+
+void BR(int instruction){
+    int n = (((instruction) & 0x0800) >> 12);
+    int z = (((instruction) & 0x0400) >> 11);
+    int p = (((instruction) & 0x0200) >> 10);
+    int PCoffset9 = (((instruction) & 0x01FF));
+
+    if((n && CURRENT_LATCHES.N) || (z && CURRENT_LATCHES.Z) || (p && CURRENT_LATCHES.P)){
+        CURRENT_LATCHES.PC = CURRENT_LATCHES.PC + LSHF(SEXT(PCoffset9, 9), 1);
+    }
+}
+
+void JMP(int instruction){
+    int BaseR = BaseR_MASKED(instruction);
+    CURRENT_LATCHES.PC = CURRENT_LATCHES.REGS[BaseR];
+}
+
+void JSR(int instruction){
+    /* TEMP = PC†
+	if (bit(11)==0)
+	    PC = BaseR;
+	else
+	    PC = PC† + LSHF(SEXT(PCoffset11), 1);
+	R7 = TEMP;
+	
+	* PC†: incremented PC
+    */
+
+    int TEMP = CURRENT_LATCHES.PC;
+    int bit_11 = (((instruction) & 0x0800) >> 11);
+    if(bit_11 == 0){
+        int BaseR = BaseR_MASKED(instruction);
+        CURRENT_LATCHES.PC = CURRENT_LATCHES.REGS[BaseR];
+    }
+    else{
+        int PCoffset11 = (((instruction) & 0x07FF));
+        CURRENT_LATCHES.PC = CURRENT_LATCHES.PC + LSHF(PCoffset11, 1);
+    }
+    CURRENT_LATCHES.REGS[7] = TEMP;
+}
+
+void LDB(int instruction){
+    int BaseR = BaseR_MASKED(instruction);
+    CURRENT_LATCHES.REGS[DR_MASKED(instruction)] = SEXT(MEMORY[CURRENT_LATCHES.REGS[BaseR] + SEXT(((instruction) & 0x003F), 6)][0], 8);
+    // TODO: need to check how to store half and half
+    setcc(CURRENT_LATCHES.REGS[DR_MASKED(instruction)]);
+}
+
+void LDW(int instruction){
+    int BaseR = BaseR_MASKED(instruction);
+    int offset6 = ((instruction) & 0x003F);
+    CURRENT_LATCHES.REGS[DR_MASKED(instruction)] = MEMORY[CURRENT_LATCHES.REGS[BaseR] + LSHF(offset6, 1)][0];
+    setcc(CURRENT_LATCHES.REGS[DR_MASKED(instruction)]);
+}
+
+void LEA(int instruction){
+    int PCoffset9 = (((instruction) & 0x01FF));
+    CURRENT_LATCHES.REGS[DR_MASKED(instruction)] = CURRENT_LATCHES.PC + LSHF(SEXT(PCoffset9, 9), 1);
+    // setcc(CURRENT_LATCHES.REGS[DR_MASKED(instruction)]);
+}
+
+void XOR(int instruction){
+    int DR = CURRENT_LATCHES.REGS[DR_MASKED(instruction)]; // contains the value
+    int SR1 = CURRENT_LATCHES.REGS[SR1_MASKED(instruction)];
+    int bit_5 = (((instruction) & 0x0020) >> 5);
+    if(bit_5 == 0){
+        int SR2 = CURRENT_LATCHES.REGS[SR2_MASKED(instruction)];
+        DR = Low16bits(SR1 ^ SR2);
+    }
+    else{
+        int imm5 = ((instruction) & 0x001F);
+        DR = Low16bits(SR1 ^ SEXT(imm5, 5));
+    }
+    CURRENT_LATCHES.REGS[DR_MASKED(instruction)] = DR;
+    setcc(DR); // whether the binary value prodcued, taken as 2's complement integer, is negative, zero, or positive
+    // TODO: check if 2's complement integer will be considered correctly
+}
+
+void RTI(int instruction){
+    printf("RTI is not implemented");
+}
+
+void SHF(int instruction){
+    int DR = CURRENT_LATCHES.REGS[DR_MASKED(instruction)]; // contains the value
+    int SR = CURRENT_LATCHES.REGS[SR1_MASKED(instruction)];
+    int amount4 = ((instruction) & 0x000F);
+    int bit_4 = (((instruction) & 0x0010) >> 4);
+    int bit_5 = (((instruction) & 0x0020) >> 5);
+    if(bit_4 == 0){
+        DR = Low16bits(LSHF(SR, amount4));
+    }
+    else{
+        if (bit_5 == 0){
+            DR = Low16bits(RSHF(SR, amount4, 0));
+        }
+        else{
+            // the right shift is an arithmetic shift; thus the original SR[15] is shifted into the vacated bit positions.
+
+            DR = Low16bits(RSHF(SR, amount4, (SR & 0x8000) >> 15));
+        }
+    }
+    CURRENT_LATCHES.REGS[DR_MASKED(instruction)] = DR;
+    setcc(DR);
+}
+
+void STB(int instruction){
+    int SR = CURRENT_LATCHES.REGS[DR_MASKED(instruction)];
+    int BaseR = BaseR_MASKED(instruction);
+    int boffset6 = ((instruction) & 0x003F);
+    MEMORY[CURRENT_LATCHES.REGS[BaseR] + SEXT(boffset6, 6)][0] = (SR & 0x00FF);
+}
+
+void STW(int instruction){
+    int SR = CURRENT_LATCHES.REGS[DR_MASKED(instruction)];
+    int BaseR = BaseR_MASKED(instruction);
+    int offset6 = ((instruction) & 0x003F);
+    MEMORY[CURRENT_LATCHES.REGS[BaseR] + LSHF(offset6, 1)][0] = SR;
+}
+
+void TRAP(int instruction){
+    int trapvect8 = ((instruction) & 0x00FF);
+    CURRENT_LATCHES.REGS[7] = CURRENT_LATCHES.PC;
+    CURRENT_LATCHES.PC = MEMORY[trapvect8][0]; // already zero extended
+}
+
+int get_opcode(int instruction){
+    (instruction >> 12) & 0x0F;
+    NEXT_LATCHES.PC = CURRENT_LATCHES.PC + 2;
+    return (instruction >> 12) & 0x0F;
+}
+
+int get_instruction(){
+    int instruction = (MEMORY[CURRENT_LATCHES.PC >> 1][0] & 0x00FF);
+    instruction |= (MEMORY[CURRENT_LATCHES.PC >> 1][1] & 0x00FF) << 8;
+    instruction = Low16bits(instruction);
+    return instruction;
+}
 
 void process_instruction(){
     /*  function: process_instruction
@@ -412,4 +635,24 @@ void process_instruction(){
      *       -Update NEXT_LATCHES
      */
 
+    int instruction = get_instruction;
+    int opcode = get_opcode(instruction);
+    switch (opcode) {
+        case 0x00: BR(instruction); break;
+        case 0x01: ADD(instruction); break;
+        case 0x02: LDB(instruction); break;
+        case 0x03: STB(instruction); break;
+        case 0x04: JSR(instruction); break;
+        case 0x05: AND(instruction); break;
+        case 0x06: LDW(instruction); break;
+        case 0x07: STW(instruction); break;
+        case 0x08: RTI(instruction); break;
+        case 0x09: XOR(instruction); break; // also NOT
+        case 0x0A: printf("unused"); break;
+        case 0x0B: printf("unused"); break;
+        case 0x0C: JMP(instruction); break; // also RET
+        case 0x0D: SHF(instruction); break;
+        case 0x0E: LEA(instruction); break;
+        case 0x0F: TRAP(instruction); break;
+    }
 }
