@@ -400,14 +400,6 @@ int main(int argc, char *argv[]) {
 
 /***************************************************************/
 
-// Q1. How to solve storing into memory [0] and [1]?
-// Q2. How to LSHF and RSHF?
-// Q3. How to implement SEXT?
-// Q4. When to use Low16bit (in which conditions)?
-// Q5. What changes in JSR and JSRR?
-// Q6. Difference between CURRENT_LATCHES and NEXT_LATCHES?
-// Q7. If there is no setcc() on pdf, it does not set the condition codes?
-
 #define DR_MASKED(x) (((x) & 0x0E00) >> 9)
 #define SR1_MASKED(x) (((x) & 0x01C0) >> 6)
 #define SR2_MASKED(x) ((x) & 0x0007)
@@ -456,36 +448,39 @@ int SEXT(int num, int bits){
     return num;
 }
 
+/***************************************************************/
+
+
 void ADD(int instruction){
-    int DR = CURRENT_LATCHES.REGS[DR_MASKED(instruction)]; // contains the value
-    int SR1 = CURRENT_LATCHES.REGS[SR1_MASKED(instruction)];
+    int DR = Low16bits(CURRENT_LATCHES.REGS[DR_MASKED(instruction)]); // contains the value
+    int SR1 = Low16bits(CURRENT_LATCHES.REGS[SR1_MASKED(instruction)]);
     int bit_5 = (((instruction) & 0x0020) >> 5);
     if(bit_5 == 0){
-        int SR2 = CURRENT_LATCHES.REGS[SR2_MASKED(instruction)];
+        int SR2 = Low16bits(CURRENT_LATCHES.REGS[SR2_MASKED(instruction)]);
         DR = Low16bits(SR1 + SR2);
     }
     else{
         int imm5 = ((instruction) & 0x001F);
         DR = Low16bits(SR1 + SEXT(imm5, 5));
     }
-    CURRENT_LATCHES.REGS[DR_MASKED(instruction)] = DR;
-    setcc(DR);
+    NEXT_LATCHES.REGS[DR_MASKED(instruction)] = Low16bits(DR);
+    setcc(Low16bits(DR));
 }
 
 void AND(int instruction){
-    int DR = CURRENT_LATCHES.REGS[DR_MASKED(instruction)]; // contains the value
-    int SR1 = CURRENT_LATCHES.REGS[SR1_MASKED(instruction)];
+    int DR = Low16bits(CURRENT_LATCHES.REGS[DR_MASKED(instruction)]); // contains the value
+    int SR1 = Low16bits(CURRENT_LATCHES.REGS[SR1_MASKED(instruction)]);
     int bit_5 = (((instruction) & 0x0020) >> 5);
     if(bit_5 == 0){
-        int SR2 = CURRENT_LATCHES.REGS[SR2_MASKED(instruction)];
+        int SR2 = Low16bits(CURRENT_LATCHES.REGS[SR2_MASKED(instruction)]);
         DR = Low16bits(SR1 & SR2);
     }
     else{
         int imm5 = ((instruction) & 0x001F);
         DR = Low16bits(SR1 & SEXT(imm5, 5));
     }
-    CURRENT_LATCHES.REGS[DR_MASKED(instruction)] = DR;
-    setcc(DR);
+    NEXT_LATCHES.REGS[DR_MASKED(instruction)] = Low16bits(DR);
+    setcc(Low16bits(DR));
 }
 
 void BR(int instruction){
@@ -495,13 +490,13 @@ void BR(int instruction){
     int PCoffset9 = (((instruction) & 0x01FF));
 
     if((n && CURRENT_LATCHES.N) || (z && CURRENT_LATCHES.Z) || (p && CURRENT_LATCHES.P)){
-        CURRENT_LATCHES.PC = CURRENT_LATCHES.PC + LSHF(SEXT(PCoffset9, 9), 1);
+        NEXT_LATCHES.PC = CURRENT_LATCHES.PC + LSHF(SEXT(PCoffset9, 9), 1);
     }
 }
 
 void JMP(int instruction){
     int BaseR = BaseR_MASKED(instruction);
-    CURRENT_LATCHES.PC = CURRENT_LATCHES.REGS[BaseR];
+    NEXT_LATCHES.PC = Low16bits(CURRENT_LATCHES.REGS[BaseR]);
 }
 
 void JSR(int instruction){
@@ -511,7 +506,7 @@ void JSR(int instruction){
 	else
 	    PC = PC† + LSHF(SEXT(PCoffset11), 1);
 	R7 = TEMP;
-	
+
 	* PC†: incremented PC
     */
 
@@ -519,50 +514,48 @@ void JSR(int instruction){
     int bit_11 = (((instruction) & 0x0800) >> 11);
     if(bit_11 == 0){
         int BaseR = BaseR_MASKED(instruction);
-        CURRENT_LATCHES.PC = CURRENT_LATCHES.REGS[BaseR];
+        NEXT_LATCHES.PC = Low16bits(CURRENT_LATCHES.REGS[BaseR]);
     }
     else{
         int PCoffset11 = (((instruction) & 0x07FF));
-        CURRENT_LATCHES.PC = CURRENT_LATCHES.PC + LSHF(PCoffset11, 1);
+        NEXT_LATCHES.PC =  Low16bits(CURRENT_LATCHES.PC + LSHF(PCoffset11, 1));
     }
-    CURRENT_LATCHES.REGS[7] = TEMP;
+    NEXT_LATCHES.REGS[7] = TEMP;
 }
 
 void LDB(int instruction){
     int BaseR = BaseR_MASKED(instruction);
-    CURRENT_LATCHES.REGS[DR_MASKED(instruction)] = SEXT(MEMORY[CURRENT_LATCHES.REGS[BaseR] + SEXT(((instruction) & 0x003F), 6)][0], 8);
-    // TODO: need to check how to store half and half
-    setcc(CURRENT_LATCHES.REGS[DR_MASKED(instruction)]);
+    NEXT_LATCHES.REGS[DR_MASKED(instruction)] = Low16bits((SEXT(MEMORY[Low16bits(CURRENT_LATCHES.REGS[BaseR]) + SEXT(((instruction) & 0x003F), 6)][0], 8)) & 0x00FF);
+    setcc(Low16bits(CURRENT_LATCHES.REGS[DR_MASKED(instruction)]));
 }
 
 void LDW(int instruction){
     int BaseR = BaseR_MASKED(instruction);
     int offset6 = ((instruction) & 0x003F);
-    CURRENT_LATCHES.REGS[DR_MASKED(instruction)] = MEMORY[CURRENT_LATCHES.REGS[BaseR] + LSHF(offset6, 1)][0];
-    setcc(CURRENT_LATCHES.REGS[DR_MASKED(instruction)]);
+    NEXT_LATCHES.REGS[DR_MASKED(instruction)] = Low16bits((((MEMORY[Low16bits(CURRENT_LATCHES.REGS[BaseR]) + LSHF(offset6, 1)][1]) << 8) & 0xFF00) +((MEMORY[Low16bits(CURRENT_LATCHES.REGS[BaseR]) + LSHF(offset6, 1)][1]) & 0x00FF));
+    setcc(Low16bits(CURRENT_LATCHES.REGS[DR_MASKED(instruction)]));
 }
 
 void LEA(int instruction){
     int PCoffset9 = (((instruction) & 0x01FF));
-    CURRENT_LATCHES.REGS[DR_MASKED(instruction)] = CURRENT_LATCHES.PC + LSHF(SEXT(PCoffset9, 9), 1);
-    // setcc(CURRENT_LATCHES.REGS[DR_MASKED(instruction)]);
+    NEXT_LATCHES.REGS[DR_MASKED(instruction)] = Low16bits(CURRENT_LATCHES.PC + LSHF(SEXT(PCoffset9, 9), 1));
+    // setcc(Low16bits(CURRENT_LATCHES.REGS[DR_MASKED(instruction)]) // possibly deprecated (mentioned in the pdf);
 }
 
 void XOR(int instruction){
-    int DR = CURRENT_LATCHES.REGS[DR_MASKED(instruction)]; // contains the value
-    int SR1 = CURRENT_LATCHES.REGS[SR1_MASKED(instruction)];
+    int DR = Low16bits(CURRENT_LATCHES.REGS[DR_MASKED(instruction)]); // contains the value
+    int SR1 = Low16bits(CURRENT_LATCHES.REGS[SR1_MASKED(instruction)]);
     int bit_5 = (((instruction) & 0x0020) >> 5);
     if(bit_5 == 0){
-        int SR2 = CURRENT_LATCHES.REGS[SR2_MASKED(instruction)];
+        int SR2 = Low16bits(CURRENT_LATCHES.REGS[SR2_MASKED(instruction)]);
         DR = Low16bits(SR1 ^ SR2);
     }
     else{
         int imm5 = ((instruction) & 0x001F);
         DR = Low16bits(SR1 ^ SEXT(imm5, 5));
     }
-    CURRENT_LATCHES.REGS[DR_MASKED(instruction)] = DR;
+    NEXT_LATCHES.REGS[DR_MASKED(instruction)] = DR;
     setcc(DR); // whether the binary value prodcued, taken as 2's complement integer, is negative, zero, or positive
-    // TODO: check if 2's complement integer will be considered correctly
 }
 
 void RTI(int instruction){
@@ -570,8 +563,8 @@ void RTI(int instruction){
 }
 
 void SHF(int instruction){
-    int DR = CURRENT_LATCHES.REGS[DR_MASKED(instruction)]; // contains the value
-    int SR = CURRENT_LATCHES.REGS[SR1_MASKED(instruction)];
+    int DR = Low16bits(CURRENT_LATCHES.REGS[DR_MASKED(instruction)]); // contains the value
+    int SR = Low16bits(CURRENT_LATCHES.REGS[SR1_MASKED(instruction)]);
     int amount4 = ((instruction) & 0x000F);
     int bit_4 = (((instruction) & 0x0010) >> 4);
     int bit_5 = (((instruction) & 0x0020) >> 5);
@@ -588,39 +581,43 @@ void SHF(int instruction){
             DR = Low16bits(RSHF(SR, amount4, (SR & 0x8000) >> 15));
         }
     }
-    CURRENT_LATCHES.REGS[DR_MASKED(instruction)] = DR;
-    setcc(DR);
+    NEXT_LATCHES.REGS[DR_MASKED(instruction)] = Low16bits(DR);
+    setcc(Low16bits(DR));
 }
 
 void STB(int instruction){
-    int SR = CURRENT_LATCHES.REGS[DR_MASKED(instruction)];
+    int SR = Low16bits(CURRENT_LATCHES.REGS[DR_MASKED(instruction)]);
     int BaseR = BaseR_MASKED(instruction);
     int boffset6 = ((instruction) & 0x003F);
-    MEMORY[CURRENT_LATCHES.REGS[BaseR] + SEXT(boffset6, 6)][0] = (SR & 0x00FF);
+    int loc = Low16bits(CURRENT_LATCHES.REGS[BaseR] + SEXT(boffset6, 6));
+    MEMORY[loc][0] = (SR & 0x00FF);
 }
 
 void STW(int instruction){
-    int SR = CURRENT_LATCHES.REGS[DR_MASKED(instruction)];
+    int SR = Low16bits(CURRENT_LATCHES.REGS[DR_MASKED(instruction)]);
     int BaseR = BaseR_MASKED(instruction);
     int offset6 = ((instruction) & 0x003F);
-    MEMORY[CURRENT_LATCHES.REGS[BaseR] + LSHF(offset6, 1)][0] = SR;
+    int loc = Low16bits(CURRENT_LATCHES.REGS[BaseR] + LSHF(offset6, 1));
+    MEMORY[loc][0] = (SR & 0x00FF);
+    MEMORY[loc][1] = ((SR & 0xFF00) >> 8);
 }
 
 void TRAP(int instruction){
     int trapvect8 = ((instruction) & 0x00FF);
-    CURRENT_LATCHES.REGS[7] = CURRENT_LATCHES.PC;
-    CURRENT_LATCHES.PC = MEMORY[trapvect8][0]; // already zero extended
+    NEXT_LATCHES.REGS[7] = Low16bits(CURRENT_LATCHES.PC);
+    NEXT_LATCHES.PC = Low16bits((MEMORY[trapvect8][0] & 0x00FF) + ((MEMORY[trapvect8][1] & 0x00FF) << 8)); // load the service routine address into PC
 }
 
+/***************************************************************/
+
+
 int get_opcode(int instruction){
-    (instruction >> 12) & 0x0F;
-    NEXT_LATCHES.PC = CURRENT_LATCHES.PC + 2;
     return (instruction >> 12) & 0x0F;
 }
 
 int get_instruction(){
     int instruction = (MEMORY[CURRENT_LATCHES.PC >> 1][0] & 0x00FF);
-    instruction |= (MEMORY[CURRENT_LATCHES.PC >> 1][1] & 0x00FF) << 8;
+    instruction += (MEMORY[CURRENT_LATCHES.PC >> 1][1] & 0x00FF) << 8;
     instruction = Low16bits(instruction);
     return instruction;
 }
@@ -634,9 +631,15 @@ void process_instruction(){
      *       -Execute
      *       -Update NEXT_LATCHES
      */
+    // int instruction = get_instruction();
+    // int opcode = get_opcode(instruction);
+    int instruction = MEMORY[CURRENT_LATCHES.PC >> 1][0] & 0x00FF;
+    instruction |= (MEMORY[CURRENT_LATCHES.PC >> 1][1] & 0x00FF) << 8;
+    instruction = Low16bits(instruction);
+    int opcode = (instruction >> 12) & 0x0F;
 
-    int instruction = get_instruction;
-    int opcode = get_opcode(instruction);
+    NEXT_LATCHES.PC = CURRENT_LATCHES.PC + 2;
+    printf("%x\n", opcode);
     switch (opcode) {
         case 0x00: BR(instruction); break;
         case 0x01: ADD(instruction); break;
