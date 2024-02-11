@@ -489,9 +489,10 @@ void BR(int instruction){
     int z = (((instruction) & 0x0400) >> 10);
     int p = (((instruction) & 0x0200) >> 9);
     int PCoffset9 = (((instruction) & 0x01FF));
+    // printf("%x %x\n", NEXT_LATCHES.PC, LSHF(SEXT(PCoffset9, 9), 1));
 
     if((n && CURRENT_LATCHES.N) || (z && CURRENT_LATCHES.Z) || (p && CURRENT_LATCHES.P)){
-        NEXT_LATCHES.PC = NEXT_LATCHES.PC + LSHF(SEXT(PCoffset9, 9), 1);
+        NEXT_LATCHES.PC = Low16bits(Low16bits(NEXT_LATCHES.PC) + LSHF(SEXT(PCoffset9, 9), 1));
     }
 }
 
@@ -519,7 +520,7 @@ void JSR(int instruction){
     }
     else{
         int PCoffset11 = (((instruction) & 0x07FF));
-        NEXT_LATCHES.PC =  Low16bits(NEXT_LATCHES.PC + LSHF(PCoffset11, 1));
+        NEXT_LATCHES.PC =  Low16bits(NEXT_LATCHES.PC + LSHF(SEXT(PCoffset11, 11), 1));
     }
     NEXT_LATCHES.REGS[7] = TEMP;
 }
@@ -530,7 +531,7 @@ void LDB(int instruction){
     // printf("%d\n", SEXT(((instruction) & 0x003F), 6));
     int loc = Low16bits((CURRENT_LATCHES.REGS[BaseR] + SEXT(((instruction) & 0x003F), 6)));
     // printf("%x\n", loc);
-    NEXT_LATCHES.REGS[DR] = Low16bits((SEXT(MEMORY[(loc/2)][loc&1], 8)) & 0x00FF);
+    NEXT_LATCHES.REGS[DR] = Low16bits(SEXT((MEMORY[loc/2][loc&1] & 0x00FF), 8));
     setcc(NEXT_LATCHES.REGS[DR]);
 }
 
@@ -540,7 +541,7 @@ void LDW(int instruction){
     int offset6 = ((instruction) & 0x003F);
     // printf("%d\n" ,offset6);
     // printf("%x\n", Low16bits((CURRENT_LATCHES.REGS[BaseR] + LSHF(offset6, 1))/2));
-    NEXT_LATCHES.REGS[DR] = Low16bits((((MEMORY[(CURRENT_LATCHES.REGS[BaseR] + LSHF(offset6, 1))/2][1]) << 8) & 0xFF00) +((MEMORY[(Low16bits(CURRENT_LATCHES.REGS[BaseR]) + LSHF(offset6, 1))/2][0]) & 0x00FF));
+    NEXT_LATCHES.REGS[DR] = Low16bits((((MEMORY[(CURRENT_LATCHES.REGS[BaseR] + LSHF(offset6, 1))/2][1])& 0x00FF) << 8)  +((MEMORY[(Low16bits(CURRENT_LATCHES.REGS[BaseR]) + LSHF(offset6, 1))/2][0]) & 0x00FF));
     setcc(NEXT_LATCHES.REGS[DR]);
 }
 
@@ -607,7 +608,7 @@ void STW(int instruction){
     int loc = Low16bits((CURRENT_LATCHES.REGS[BaseR] + LSHF(SEXT(offset6, 6), 1)));
     //printf("%x\n", loc);
     MEMORY[loc/2][0] = (CURRENT_LATCHES.REGS[SR] & 0x00FF);
-    MEMORY[loc/2][1] = ((CURRENT_LATCHES.REGS[SR] & 0xFF00) >> 8);
+    MEMORY[loc/2][1] = ((CURRENT_LATCHES.REGS[SR] >> 8)& 0x00FF);
 }
 
 void TRAP(int instruction){
