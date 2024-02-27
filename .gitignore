@@ -221,3 +221,21 @@ TSWLatexianTemp*
 # auto folder when using emacs and auctex 
 /auto/*
 
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+*.cmake
+*.iml
+.idea/
+
+# VSCode
+.vscode/
+
+# CLion
+cmake-build-debug/
+*.iml
+.idea/
+
+# CMakeLists
+CMakeLists.txt
