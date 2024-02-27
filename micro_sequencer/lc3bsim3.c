@@ -582,9 +582,43 @@ void eval_micro_sequencer() {
      * micro sequencer logic. Latch the next microinstruction.
      */
 
+    if(GetIRD(CURRENT_LATCHES.MICROINSTRUCTION)){
+        // 0 0 IR[15:12]
+        int ir15_12 = (CURRENT_LATCHES.IR & 0xF000) >> 12;
+        NEXT_LATCHES.STATE_NUMBER = ir15_12;
+    }
+    else{
+        int cond0 = GetCOND(CURRENT_LATCHES.MICROINSTRUCTION) & 0x0001;
+        int cond1 = (GetCOND(CURRENT_LATCHES.MICROINSTRUCTION) & 0x0002) >> 1;
+
+        int ben = CURRENT_LATCHES.BEN;
+        int ir11 = (CURRENT_LATCHES.IR & 0x0800) >> 11;
+
+        int and_branch = (cond1 && !(cond0) && ben);
+        int and_ready = (cond0 && !(cond1) && CURRENT_LATCHES.READY);
+        int and_addr_mode = (cond0 && cond1 && ir11);
+
+        int j = GetJ(CURRENT_LATCHES.MICROINSTRUCTION);
+        int j0 = (j & 0x0001);
+        int j1 = (j & 0x0002) >> 1;
+        int j2 = (j & 0x0004) >> 2;
+        int j3 = (j & 0x0008) >> 3;
+        int j4 = (j & 0x0010) >> 4;
+        int j5 = (j & 0x0020) >> 5;
+
+        int or_branch = (j2 && and_branch);
+        int or_ready = (j1 && and_ready);
+        int or_addr_mode = (j0 && and_addr_mode);
+
+        NEXT_LATCHES.STATE_NUMBER = (j5 << 5) + (j4 << 4) + (j3 << 3) + or_branch + or_ready + or_addr_mode;
+
+        }
+    for (int i = 0; i < CONTROL_STORE_BITS; i++){
+        NEXT_LATCHES.MICROINSTRUCTION[i] = CONTROL_STORE[NEXT_LATCHES.STATE_NUMBER][i];
+    }
 }
 
-
+int CYCLE = 0;
 void cycle_memory() {
 
     /*
@@ -594,10 +628,122 @@ void cycle_memory() {
      * cycle to prepare microsequencer for the fifth cycle.
      */
 
+    if (!GetMIO_EN(CURRENT_LATCHES.MICROINSTRUCTION)){
+        return;
+    }
+    int rw = GetR_W(CURRENT_LATCHES.MICROINSTRUCTION);
+    int data_size = GetDATA_SIZE(CURRENT_LATCHES.MICROINSTRUCTION);
+    int mar0 = (CURRENT_LATCHES.MAR & 0x0001);
+    int we0 = 0;
+    int we1 = 0;
+    int addr = CURRENT_LATCHES.MAR;
+
+    CYCLE += 1;
+    if(CYCLE == 4){
+        NEXT_LATCHES.READY = 1;
+    }
+
+    if(rw){
+        if(data_size){
+            // data size is word (MUX)
+            if(mar0){
+                we1 = 1;
+            }
+            else{
+                we0 = 1;
+            }
+        }
+        else{
+            // data size is byte
+            we0 = 1;
+            we1 = 1;
+        }
+    }
+
+    if(CURRENT_LATCHES.READY) {
+        if (we0 || we1) {
+            if (we0 && we1) {
+                // store word
+                MEMORY[addr / 2][0] = CURRENT_LATCHES.MDR & 0x00FF;
+                MEMORY[addr / 2][1] = (CURRENT_LATCHES.MDR & 0xFF00) >> 8;
+            } else if (we0) {
+                // printf("lower byte: %x\n", CURRENT_LATCHES.MDR & 0x00FF);
+                MEMORY[addr / 2][0] = CURRENT_LATCHES.MDR & 0x00FF;
+            } else if (we1) {
+                // printf("upper byte: %x\n", (CURRENT_LATCHES.MDR & 0xFF00));
+                MEMORY[addr / 2][1] = CURRENT_LATCHES.MDR & 0xFF00;
+            }
+            NEXT_LATCHES.READY = 0;
+            CYCLE = 0;
+        }
+    }
 }
 
 
+int SEXT(int num, int bits){
+    // sign extend bits num of bits
+    int pos = bits - 1;  // calculate the position of the MSB
+    int mask = 1 << pos; // create a mask with the MSB set
+    if (num & mask) { // if negative (MSB is 1)
+        num = num - (1 << bits); // convert to negative number
+        num = num | ~((1 << bits) - 1); // sign extend
+    }
+    return Low16bits(num);
+}
 
+int adder_component(){
+    int addr1mux = GetADDR1MUX(CURRENT_LATCHES.MICROINSTRUCTION);
+    int addr2mux = GetADDR2MUX(CURRENT_LATCHES.MICROINSTRUCTION);
+    int sr1mux = GetSR1MUX(CURRENT_LATCHES.MICROINSTRUCTION);
+
+    int addr1;
+    int addr2;
+
+    // SR1
+    int sr1;
+    if (sr1mux == 0) {
+        sr1 = CURRENT_LATCHES.REGS[(CURRENT_LATCHES.IR & 0x0E00) >> 9];
+    } else {
+        sr1 = CURRENT_LATCHES.REGS[(CURRENT_LATCHES.IR & 0x01C0) >> 6];
+    }
+
+    // addr1
+    if (addr1mux == 0) {
+        addr1 = CURRENT_LATCHES.PC;
+    } else {
+        addr1 = sr1;
+    }
+
+    // addr2
+    enum ADDR2MUX {
+        ZERO, OFFSET6, OFFSET9, OFFSET11
+    };
+    switch (addr2mux) {
+        case ZERO:
+            addr2 = 0;
+            break;
+        case OFFSET6:
+            // SEXT(IR[5:0])
+            addr2 = SEXT(CURRENT_LATCHES.IR & 0x003F, 6);
+            break;
+        case OFFSET9:
+            // SEXT(IR[8:0])
+            addr2 = SEXT(CURRENT_LATCHES.IR & 0x01FF, 9);
+            break;
+        case OFFSET11:
+            // SEXT(IR[10:0])
+            addr2 = SEXT(CURRENT_LATCHES.IR & 0x07FF, 11);
+            break;
+    }
+
+    //LSHF1 on the left of adder component
+    if (GetLSHF1(CURRENT_LATCHES.MICROINSTRUCTION)) {
+        addr2 = addr2 << 1;
+    }
+    return addr1 + addr2;
+}
+
+int marmux, pc, alu, shf, mdr;
 void eval_bus_drivers() {
 
     /*
@@ -610,6 +756,89 @@ void eval_bus_drivers() {
      *		 Gate_MDR.
      */
 
+    // value of MARMUX
+    if(GetGATE_MARMUX(CURRENT_LATCHES.MICROINSTRUCTION)) {
+        if (GetMARMUX(CURRENT_LATCHES.MICROINSTRUCTION) == 0) {
+            // IR[7:0] ZEXT LSHF1
+            marmux = CURRENT_LATCHES.IR & 0x00FF;
+            marmux = marmux << 1;
+        } else {
+            // PC + LSHF1
+            int adder = adder_component();
+            marmux = adder;
+        }
+    }
+    // value of PC
+    if (GetGATE_PC(CURRENT_LATCHES.MICROINSTRUCTION)) {
+        pc = CURRENT_LATCHES.PC;
+    }
+    // value of ALU
+    if(GetGATE_ALU(CURRENT_LATCHES.MICROINSTRUCTION)){
+        int sr1;
+        int sr2;
+
+        // SR1 MUX
+        if(GetSR1MUX(CURRENT_LATCHES.MICROINSTRUCTION)){
+            // IR[8:6]
+            sr1 = CURRENT_LATCHES.REGS[(CURRENT_LATCHES.IR & 0x01C0) >> 6];
+        }
+        else{
+            // REGS[IR[11:9]]
+            sr1 = CURRENT_LATCHES.REGS[(CURRENT_LATCHES.IR & 0x0E00) >> 9];
+        }
+
+        // SR2 MUX
+        if(CURRENT_LATCHES.IR & 0x0020){
+            // IR[4:0]
+            sr2 = SEXT(CURRENT_LATCHES.IR & 0x001F, 5);
+        }
+        else{
+            // REGS[IR[2:0]]
+            sr2 = CURRENT_LATCHES.REGS[CURRENT_LATCHES.IR & 0x0007];
+        }
+
+
+        // ALUMUX with ALUK Signal
+        enum ALUK {
+            ADD, AND, XOR, PASSA
+        };
+        switch (GetALUK(CURRENT_LATCHES.MICROINSTRUCTION)){
+            case ADD:
+                alu = sr1 + sr2;
+                break;
+            case AND:
+                alu = sr1 & sr2;
+                break;
+            case XOR:
+                alu = sr1 ^ sr2;
+                break;
+            case PASSA:
+                alu = sr1;
+                break;
+        }
+    }
+    // value of SHF
+    if (GetGATE_SHF(CURRENT_LATCHES.MICROINSTRUCTION)){
+        int sr1;
+
+        // SR1 MUX
+        if(GetSR1MUX(CURRENT_LATCHES.MICROINSTRUCTION)){
+            // IR[8:6]
+            sr1 = CURRENT_LATCHES.REGS[(CURRENT_LATCHES.IR & 0x01C0) >> 6];
+        }
+        else{
+            // REGS[IR[11:9]]
+            sr1 = CURRENT_LATCHES.REGS[(CURRENT_LATCHES.IR & 0x0E00) >> 9];
+        }
+
+        int amount4 = CURRENT_LATCHES.IR & 0x000F;
+
+
+        // SHF MUX
+
+
+    }
+
 }
 
 
@@ -619,6 +848,25 @@ void drive_bus() {
      * Datapath routine for driving the bus from one of the 5 possible
      * tristate drivers.
      */
+
+    if (GetGATE_MARMUX(CURRENT_LATCHES.MICROINSTRUCTION)) {
+        BUS = marmux;
+    }
+    else if (GetGATE_PC(CURRENT_LATCHES.MICROINSTRUCTION)) {
+        BUS = pc;
+    }
+    else if (GetGATE_ALU(CURRENT_LATCHES.MICROINSTRUCTION)) {
+        BUS = alu;
+    }
+    else if (GetGATE_SHF(CURRENT_LATCHES.MICROINSTRUCTION)) {
+        BUS = shf;
+    }
+    else if (GetGATE_MDR(CURRENT_LATCHES.MICROINSTRUCTION)) {
+        BUS = mdr;
+    }
+    else {
+        BUS = 0;
+    }
 
 }
 
@@ -631,5 +879,95 @@ void latch_datapath_values() {
      * require sourcing the bus; therefore, this routine has to come
      * after drive_bus.
      */
+
+    // value of MDR
+    if (GetLD_MDR(CURRENT_LATCHES.MICROINSTRUCTION)) {
+        if (GetMIO_EN(CURRENT_LATCHES.MICROINSTRUCTION)) {
+            if (CURRENT_LATCHES.READY) {
+                int addr = CURRENT_LATCHES.MAR;
+                if (GetDATA_SIZE(CURRENT_LATCHES.MICROINSTRUCTION)) {
+                    // word
+                    // upper byte
+                    NEXT_LATCHES.MDR = (MEMORY[addr / 2][1]) << 8;
+                    // lower byte
+                    NEXT_LATCHES.MDR = NEXT_LATCHES.MDR | MEMORY[addr / 2][0];
+                } else {
+                    // byte
+                    NEXT_LATCHES.MDR = SEXT(MEMORY[addr / 2][0], 8);
+                }
+                NEXT_LATCHES.READY = 0;
+                CYCLE = 0;
+            }
+        } else {
+            // not MIO_EN
+            NEXT_LATCHES.MDR = BUS;
+        }
+    }
+
+    // value of MAR
+    if (GetLD_MAR(CURRENT_LATCHES.MICROINSTRUCTION)) {
+        NEXT_LATCHES.MAR = BUS;
+    }
+
+    // value of IR
+    if (GetLD_IR(CURRENT_LATCHES.MICROINSTRUCTION)) {
+        NEXT_LATCHES.IR = BUS;
+    }
+
+    // value of PC
+    // TODO: figure out which input PCMUX for which situation
+    if (GetLD_PC(CURRENT_LATCHES.MICROINSTRUCTION)) {
+        // PCMUX = 0 -> PC + 2, PCMUX = 1 -> BUS PCMUX = 2 -> ADDER
+        if (GetPCMUX(CURRENT_LATCHES.MICROINSTRUCTION) == 0) {
+            // PC + 2
+            NEXT_LATCHES.PC = CURRENT_LATCHES.PC + 2;
+        } else if(GetPCMUX(CURRENT_LATCHES.MICROINSTRUCTION) == 1){
+            // BUS
+            NEXT_LATCHES.PC = BUS;
+        }
+        else{
+            // ADDER
+            NEXT_LATCHES.PC = adder_component();
+        }
+    }
+    else{
+        NEXT_LATCHES.PC = CURRENT_LATCHES.PC;
+    }
+
+    // value of CC
+    if (GetLD_CC(CURRENT_LATCHES.MICROINSTRUCTION)) {
+        int value = SEXT(BUS, 16);
+        if (value == 0) {
+            NEXT_LATCHES.N = 0;
+            NEXT_LATCHES.Z = 1;
+            NEXT_LATCHES.P = 0;
+        } else if (value > 0) {
+            NEXT_LATCHES.N = 1;
+            NEXT_LATCHES.Z = 0;
+            NEXT_LATCHES.P = 0;
+        } else {
+            NEXT_LATCHES.N = 0;
+            NEXT_LATCHES.Z = 0;
+            NEXT_LATCHES.P = 1;
+        }
+    }
+    else{
+        NEXT_LATCHES.N = CURRENT_LATCHES.N;
+        NEXT_LATCHES.Z = CURRENT_LATCHES.Z;
+        NEXT_LATCHES.P = CURRENT_LATCHES.P;
+    }
+
+    // value of REG
+    if (GetLD_REG(CURRENT_LATCHES.MICROINSTRUCTION)) {
+        // DRMUX = 0 -> IR[11:9], DRMUX = 1 -> 7
+        int dr = (CURRENT_LATCHES.IR & 0x0E00) >> 9;
+        if (GetDRMUX(CURRENT_LATCHES.MICROINSTRUCTION)) {
+            // IR[11:9]
+            NEXT_LATCHES.REGS[dr] = BUS;
+        } else {
+            // 7
+            NEXT_LATCHES.REGS[7] = BUS;
+        }
+    }
 
 }
