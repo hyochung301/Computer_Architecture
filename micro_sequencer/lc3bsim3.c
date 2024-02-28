@@ -617,103 +617,74 @@ void eval_micro_sequencer() {
 
     }
 
-    // for (int i = 0; i < CONTROL_STORE_BITS; i++){
-    //     NEXT_LATCHES.MICROINSTRUCTION[i] = CONTROL_STORE[next_addr][i];
-    //     printf("%d", NEXT_LATCHES.MICROINSTRUCTION[i]);
-    // }
-    memcpy(NEXT_LATCHES.MICROINSTRUCTION, CONTROL_STORE[next_addr], sizeof(int)*CONTROL_STORE_BITS);
+    for (int i = 0; i < CONTROL_STORE_BITS; i++){
+        NEXT_LATCHES.MICROINSTRUCTION[i] = CONTROL_STORE[next_addr][i];
+        printf("%d", NEXT_LATCHES.MICROINSTRUCTION[i]);
+    }
     printf("\n");
 }
 
-int MEMEN = 0;
+
+int CYCLE = 0;
 void cycle_memory() {
-    if (!GetMIO_EN(CURRENT_LATCHES.MICROINSTRUCTION)) return;
-    MEMEN ++;
-    if (MEMEN == 4) {
-        NEXT_LATCHES.READY = 1;
-        printf("MEM ready\n");
+
+    /*
+     * This function emulates memory and the WE logic.
+     * Keep track of which cycle of MEMEN we are dealing with.
+     * If fourth, we need to latch Ready bit at the end of
+     * cycle to prepare microsequencer for the fifth cycle.
+     */
+
+    if (!GetMIO_EN(CURRENT_LATCHES.MICROINSTRUCTION)){
+        return;
     }
-    if (GetMIO_EN(CURRENT_LATCHES.MICROINSTRUCTION)) {
-        if (CURRENT_LATCHES.READY) {
-            int address = CURRENT_LATCHES.MAR >> 1;
-            int byte = CURRENT_LATCHES.MAR & 0x01;
-            printf("%x\n", GetR_W(CURRENT_LATCHES.MICROINSTRUCTION));
-            if (GetR_W(CURRENT_LATCHES.MICROINSTRUCTION)) {
-                printf("write\n");
-                if (GetDATA_SIZE(CURRENT_LATCHES.MICROINSTRUCTION)) {
-                    printf("storing word in: %x\n", address << 1);
-                    MEMORY[address][0] = CURRENT_LATCHES.MDR & 0x00FF;
-                    MEMORY[address][1] = (CURRENT_LATCHES.MDR >> 8) & 0x00FF;
-                } else {
-                    printf("storing byte in: %x\n", (address << 1)+byte);
-                    MEMORY[address][byte] = CURRENT_LATCHES.MDR & 0x00FF;
-                }
+    int rw = GetR_W(CURRENT_LATCHES.MICROINSTRUCTION);
+    int data_size = GetDATA_SIZE(CURRENT_LATCHES.MICROINSTRUCTION);
+    int mar0 = (CURRENT_LATCHES.MAR & 0x0001);
+    int we0 = 0;
+    int we1 = 0;
+    int addr = CURRENT_LATCHES.MAR;
+
+    CYCLE += 1;
+    if(CYCLE == 4){
+        NEXT_LATCHES.READY = 1;
+    }
+
+    if(rw){
+        if(data_size){
+            // data size is word (MUX)
+            if(mar0){
+                we1 = 1;
+            }
+            else{
+                we0 = 1;
+            }
+        }
+        else{
+            // data size is byte
+            we0 = 1;
+            we1 = 1;
+        }
+    }
+
+    if(CURRENT_LATCHES.READY) {
+        if (we0 || we1) {
+            if (we0 && we1) {
+                // store word
+                MEMORY[addr / 2][0] = CURRENT_LATCHES.MDR & 0x00FF;
+                MEMORY[addr / 2][1] = (CURRENT_LATCHES.MDR & 0xFF00) >> 8;
+            } else if (we0) {
+                // printf("lower byte: %x\n", CURRENT_LATCHES.MDR & 0x00FF);
+                MEMORY[addr / 2][0] = CURRENT_LATCHES.MDR & 0x00FF;
+            } else if (we1) {
+                // printf("upper byte: %x\n", (CURRENT_LATCHES.MDR & 0xFF00));
+                MEMORY[addr / 2][1] = CURRENT_LATCHES.MDR & 0xFF00;
             }
             NEXT_LATCHES.READY = 0;
-            MEMEN = 0;
+            CYCLE = 0;
         }
     }
 }
-// int CYCLE = 0;
-// void cycle_memory() {
-
-//     /*
-//      * This function emulates memory and the WE logic.
-//      * Keep track of which cycle of MEMEN we are dealing with.
-//      * If fourth, we need to latch Ready bit at the end of
-//      * cycle to prepare microsequencer for the fifth cycle.
-//      */
-
-//     if (!GetMIO_EN(CURRENT_LATCHES.MICROINSTRUCTION)){
-//         return;
-//     }
-//     int rw = GetR_W(CURRENT_LATCHES.MICROINSTRUCTION);
-//     int data_size = GetDATA_SIZE(CURRENT_LATCHES.MICROINSTRUCTION);
-//     int mar0 = (CURRENT_LATCHES.MAR & 0x0001);
-//     int we0 = 0;
-//     int we1 = 0;
-//     int addr = CURRENT_LATCHES.MAR;
-
-//     CYCLE += 1;
-//     if(CYCLE == 4){
-//         NEXT_LATCHES.READY = 1;
-//     }
-
-//     if(rw){
-//         if(data_size){
-//             // data size is word (MUX)
-//             if(mar0){
-//                 we1 = 1;
-//             }
-//             else{
-//                 we0 = 1;
-//             }
-//         }
-//         else{
-//             // data size is byte
-//             we0 = 1;
-//             we1 = 1;
-//         }
-//     }
-
-//     if(CURRENT_LATCHES.READY) {
-//         if (we0 || we1) {
-//             if (we0 && we1) {
-//                 // store word
-//                 MEMORY[addr / 2][0] = CURRENT_LATCHES.MDR & 0x00FF;
-//                 MEMORY[addr / 2][1] = (CURRENT_LATCHES.MDR & 0xFF00) >> 8;
-//             } else if (we0) {
-//                 // printf("lower byte: %x\n", CURRENT_LATCHES.MDR & 0x00FF);
-//                 MEMORY[addr / 2][0] = CURRENT_LATCHES.MDR & 0x00FF;
-//             } else if (we1) {
-//                 // printf("upper byte: %x\n", (CURRENT_LATCHES.MDR & 0xFF00));
-//                 MEMORY[addr / 2][1] = CURRENT_LATCHES.MDR & 0xFF00;
-//             }
-//             NEXT_LATCHES.READY = 0;
-//             CYCLE = 0;
-//         }
-//     }
-// }
 
 
 int SEXT(int num, int bits){
@@ -728,9 +699,9 @@ int SEXT(int num, int bits){
 }
 
 int adder_component(){
+    int sr1mux = GetSR1MUX(CURRENT_LATCHES.MICROINSTRUCTION);
     int addr1mux = GetADDR1MUX(CURRENT_LATCHES.MICROINSTRUCTION);
     int addr2mux = GetADDR2MUX(CURRENT_LATCHES.MICROINSTRUCTION);
-    int sr1mux = GetSR1MUX(CURRENT_LATCHES.MICROINSTRUCTION);
 
     int addr1;
     int addr2;
@@ -952,7 +923,7 @@ void latch_datapath_values() {
                     NEXT_LATCHES.MDR = SEXT(MEMORY[addr / 2][0], 8);
                 }
                 NEXT_LATCHES.READY = 0;
-                MEMEN = 0;
+                CYCLE = 0;
             }
         } else {
             // not MIO_EN
@@ -971,23 +942,35 @@ void latch_datapath_values() {
         NEXT_LATCHES.IR = BUS;
     }
 
+    // Enum for PCMUX values
+    enum PCMUX {
+        PC_PLUS_2,
+        BUS,
+        ADDER
+    };
+
     // value of PC
-    // TODO: figure out which input PCMUX for which situation
     if (GetLD_PC(CURRENT_LATCHES.MICROINSTRUCTION)) {
-        // PCMUX = 0 -> PC + 2, PCMUX = 1 -> BUS PCMUX = 2 -> ADDER
-        if (GetPCMUX(CURRENT_LATCHES.MICROINSTRUCTION) == 0) {
-            // PC + 2
-            NEXT_LATCHES.PC = CURRENT_LATCHES.PC + 2;
-        } else if(GetPCMUX(CURRENT_LATCHES.MICROINSTRUCTION) == 1){
-            // BUS
-            NEXT_LATCHES.PC = BUS;
-        }
-        else{
-            // ADDER
-            NEXT_LATCHES.PC = adder_component();
+        // Determine PCMUX value
+        enum PCMUX pcmux = (enum PCMUX)GetPCMUX(CURRENT_LATCHES.MICROINSTRUCTION);
+
+        // Perform action based on PCMUX value
+        switch (pcmux) {
+            case PC_PLUS_2:
+                // PC + 2
+                NEXT_LATCHES.PC = CURRENT_LATCHES.PC + 2;
+                break;
+            case BUS:
+                // BUS
+                NEXT_LATCHES.PC = BUS;
+                break;
+            case ADDER:
+                // ADDER
+                NEXT_LATCHES.PC = adder_component();
+                break;
         }
     }
-    else{
+    else {
         NEXT_LATCHES.PC = CURRENT_LATCHES.PC;
     }
 
@@ -1019,7 +1002,7 @@ void latch_datapath_values() {
     if (GetLD_REG(CURRENT_LATCHES.MICROINSTRUCTION)) {
         // DRMUX = 0 -> IR[11:9], DRMUX = 1 -> 7
         int dr = (CURRENT_LATCHES.IR & 0x0E00) >> 9;
-        if (GetDRMUX(CURRENT_LATCHES.MICROINSTRUCTION)) {
+        if (GetDRMUX(CURRENT_LATCHES.MICROINSTRUCTION) == 0) {
             // IR[11:9]
             NEXT_LATCHES.REGS[dr] = BUS;
         } else {
