@@ -922,19 +922,19 @@ void drive_bus() {
      */
 
     if (GetGATE_MARMUX(CURRENT_LATCHES.MICROINSTRUCTION)) {
-        BUS = marmux;
+        BUS = Low16bits(marmux);
     }
     else if (GetGATE_PC(CURRENT_LATCHES.MICROINSTRUCTION)) {
-        BUS = pc;
+        BUS = Low16bits(pc);
     }
     else if (GetGATE_ALU(CURRENT_LATCHES.MICROINSTRUCTION)) {
-        BUS = alu;
+        BUS = Low16bits(alu);
     }
     else if (GetGATE_SHF(CURRENT_LATCHES.MICROINSTRUCTION)) {
-        BUS = shf;
+        BUS = Low16bits(shf);
     }
     else if (GetGATE_MDR(CURRENT_LATCHES.MICROINSTRUCTION)) {
-        BUS = mdr;
+        BUS = Low16bits(mdr);
     }
     else {
         BUS = 0;
@@ -1000,6 +1000,10 @@ void latch_datapath_values() {
         NEXT_LATCHES.IR = BUS;
     }
 
+    if(GetLD_BEN(CURRENT_LATCHES.MICROINSTRUCTION))
+        NEXT_LATCHES.BEN = (((CURRENT_LATCHES.IR & 0x0800) >> 11) & CURRENT_LATCHES.N) || (((CURRENT_LATCHES.IR & 0x0400) >> 10) & CURRENT_LATCHES.Z) || (((CURRENT_LATCHES.IR & 0x0200) >> 9) & CURRENT_LATCHES.P);
+    else
+        NEXT_LATCHES.BEN = CURRENT_LATCHES.BEN;
 
     memcpy(NEXT_LATCHES.REGS, CURRENT_LATCHES.REGS, sizeof(int)*8);
 
