@@ -752,16 +752,24 @@ int adder_component(){
     return addr1 + addr2;
 }
 
-int RSHF(int num, int shift, int arith) {
-    // arith = 1 for arithmetic right shift, 0 for logical right shift
-    if (arith) {
-        if (num & 0x8000) {
-            // If the number is negative, fill the leftmost bits with 1s after the shift
-            num = num - 65536; // Convert to negative integer value
-        }
-    }
-    num = num >> shift;
-    return num;
+//int RSHF(int num, int shift, int arith) {
+//    // arith = 1 for arithmetic right shift, 0 for logical right shift
+//    if (arith) {
+//        if (num & 0x8000) {
+//            // If the number is negative, fill the leftmost bits with 1s after the shift
+//            num = num - 65536; // Convert to negative integer value
+//        }
+//    }
+//    num = num >> shift;
+//    return num;
+//}
+int RSHF(int SR, int amt, int sign){
+    if(sign == 0)
+        return Low16bits(SR >> amt);
+    SR = Low16bits(~SR + 1);
+    SR = SR >> amt;
+    SR = ~SR;
+    return Low16bits(SR);
 }
 
 
@@ -851,7 +859,7 @@ void eval_bus_drivers() {
 
     // value of SHF
     printf("SHF GATE: %d\n", GetGATE_SHF(CURRENT_LATCHES.MICROINSTRUCTION));
-    if (GetGATE_SHF(CURRENT_LATCHES.MICROINSTRUCTION)){
+    if (GetGATE_SHF(CURRENT_LATCHES.MICROINSTRUCTION)) {
         int sr1;
 
         // SR1 MUX
@@ -865,23 +873,21 @@ void eval_bus_drivers() {
         int amount4 = CURRENT_LATCHES.IR & 0x000F;
         // SHF MUX
         enum SHF {
-            LEFT, RIGHT, ARITH
+            LEFT, RIGHT, DUMMY, ARITH
         };
         switch ((CURRENT_LATCHES.IR & 0x0030) >> 4) {
             case LEFT:
                 shf = Low16bits(sr1 << amount4);
                 break;
             case RIGHT:
-                shf = Low16bits(RSHF(sr1, amount4, 0));
+                shf = Low16bits(sr1 >> amount4);
                 break;
             case ARITH:
-                shf = Low16bits(
-                        RSHF(sr1, amount4, (((CURRENT_LATCHES.REGS[sr1]) & 0x8000) >> 15)));
+                shf = Low16bits(SEXT(sr1, 16) >> amount4);
                 break;
         }
 
     }
-
 
 
     // value of MDR
