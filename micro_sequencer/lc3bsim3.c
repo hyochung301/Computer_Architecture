@@ -928,58 +928,6 @@ void drive_bus() {
 
 }
 
-
-// void latch_datapath_values() {
-
-//     /*
-//      * Datapath routine for computing all functions that need to latch
-//      * values in the data path at the end of this cycle.  Some values
-//      * require sourcing the bus; therefore, this routine has to come
-//      * after drive_bus.
-//      */
-
-//     // value of MDR
-//     if (GetLD_MDR(CURRENT_LATCHES.MICROINSTRUCTION)) {
-//         if (GetMIO_EN(CURRENT_LATCHES.MICROINSTRUCTION)) {
-//             if (CURRENT_LATCHES.READY) {
-//                 int addr = CURRENT_LATCHES.MAR;
-//                 if (GetDATA_SIZE(CURRENT_LATCHES.MICROINSTRUCTION)) {
-//                     // word
-//                     // upper byte
-//                     NEXT_LATCHES.MDR = (MEMORY[addr / 2][1]) << 8;
-//                     // lower byte
-//                     NEXT_LATCHES.MDR = NEXT_LATCHES.MDR | MEMORY[addr / 2][0];
-//                 } else {
-//                     // byte
-//                     NEXT_LATCHES.MDR = SEXT(MEMORY[addr / 2][0], 8);
-//                 }
-//                 NEXT_LATCHES.READY = 0;
-//                 CYCLE = 0;
-//             }
-//         } else {
-//             // not MIO_EN
-//             NEXT_LATCHES.MDR = BUS;
-//         }
-//     }
-
-
-
-//     // value of REG
-//     if (GetLD_REG(CURRENT_LATCHES.MICROINSTRUCTION)) {
-//         // DRMUX = 0 -> IR[11:9], DRMUX = 1 -> 7
-//         int dr = (CURRENT_LATCHES.IR & 0x0E00) >> 9;
-//         if (GetDRMUX(CURRENT_LATCHES.MICROINSTRUCTION) == 0) {
-//             // IR[11:9]
-//             NEXT_LATCHES.REGS[dr] = BUS;
-//         } else {
-//             // 7
-//             NEXT_LATCHES.REGS[7] = BUS;
-//         }
-//     }
-
-// }
-
-
 void setcc(int cond){
     int isNegative = (cond & 0x8000) != 0; // Check if bit 15 is set
     int isZero = (cond & 0xFFFF) == 0; // Check if all bits are 0
