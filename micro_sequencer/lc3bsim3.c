@@ -615,8 +615,8 @@ void eval_micro_sequencer() {
         next_addr = j5 + j4 + j3 + (or_branch << 2) + (or_ready <<1) + or_addr_mode;
         NEXT_LATCHES.STATE_NUMBER = next_addr;
 
-    }
-
+        }
+    
     for (int i = 0; i < CONTROL_STORE_BITS; i++){
         NEXT_LATCHES.MICROINSTRUCTION[i] = CONTROL_STORE[next_addr][i];
         printf("%d", NEXT_LATCHES.MICROINSTRUCTION[i]);
@@ -679,7 +679,7 @@ void cycle_memory() {
                 // printf("lower byte: %x\n", CURRENT_LATCHES.MDR & 0x00FF);
                 MEMORY[addr / 2][0] = CURRENT_LATCHES.MDR & 0x00FF;
             } else if (we1) {
-
+                
                 MEMORY[addr / 2][1] = CURRENT_LATCHES.MDR & 0x00FF;
             }
             NEXT_LATCHES.READY = 0;
@@ -689,15 +689,23 @@ void cycle_memory() {
 }
 
 
-int SEXT(int num, int bits){
-    // sign extend bits num of bits
-    int pos = bits - 1;  // calculate the position of the MSB
-    int mask = 1 << pos; // create a mask with the MSB set
-    if (num & mask) { // if negative (MSB is 1)
-        num = num - (1 << bits); // convert to negative number
-        num = num | ~((1 << bits) - 1); // sign extend
+//int SEXT(int num, int bits){
+//    // sign extend bits num of bits
+//    int pos = bits - 1;  // calculate the position of the MSB
+//    int mask = 1 << pos; // create a mask with the MSB set
+//    if (num & mask) { // if negative (MSB is 1)
+//        num = num - (1 << bits); // convert to negative number
+//        num = num | ~((1 << bits) - 1); // sign extend
+//    }
+//    return Low16bits(num);
+//}
+
+int SEXT(int num, int signbit) {
+    if (num && (1 << signbit)) {
+        num = num << (8*sizeof(int)-1-signbit);
+        num = num >> (8*sizeof(int)-1-signbit);
     }
-    return Low16bits(num);
+    return(num);
 }
 
 int adder_component(){
@@ -751,6 +759,20 @@ int adder_component(){
     }
     return addr1 + addr2;
 }
+
+
+int rshf(int num, int shift, int arith) {
+    // arith = 1 for arithmetic right shift, 0 for logical right shift
+    if (arith) {
+        if (num & 0x8000) {
+            // If the number is negative, fill the leftmost bits with 1s after the shift
+            num = num - 65536; // Convert to negative integer value
+        }
+    }
+    num = num >> shift;
+    return num;
+}
+
 
 int marmux, pc, alu, shf, mdr;
 void eval_bus_drivers() {
@@ -835,7 +857,7 @@ void eval_bus_drivers() {
         printf("ALU evaluated: %x\n", alu);
     }
 
-
+    
     // value of SHF
     printf("SHF GATE: %d\n", GetGATE_SHF(CURRENT_LATCHES.MICROINSTRUCTION));
     if (GetGATE_SHF(CURRENT_LATCHES.MICROINSTRUCTION)) {
@@ -851,20 +873,27 @@ void eval_bus_drivers() {
         }
         int amount4 = CURRENT_LATCHES.IR & 0x000F;
         // SHF MUX
-        enum SHF {
-            LEFT, RIGHT, DUMMY, ARITH
-        };
-        switch ((CURRENT_LATCHES.IR & 0x0030) >> 4) {
-            case LEFT:
-                shf = Low16bits(sr1 << amount4);
-                break;
-            case RIGHT:
-                shf = Low16bits(sr1 >> amount4);
-                break;
-            case ARITH:
-                shf = Low16bits(SEXT(sr1, 16) >> amount4);
-                break;
-        }
+//        enum SHF {
+//            LEFT, RIGHT, DUMMY, ARITH
+//        };
+//        switch ((CURRENT_LATCHES.IR & 0x0030) >> 4) {
+//            case LEFT:
+//                shf = Low16bits(sr1 << amount4);
+//                break;
+//            case RIGHT:
+//                shf = Low16bits(sr1 >> amount4);
+//                break;
+//            case ARITH:
+//                shf = Low16bits(rshf(sr1, (CURRENT_LATCHES.IR & 0x000F), ((CURRENT_LATCHES.REGS[sr1]) & 0x8000)));
+//                break;
+//        }
+//        if (GetSR1MUX(CURRENT_LATCHES.MICROINSTRUCTION)) sr1 = (CURRENT_LATCHES.IR >> 6) & 0x07;
+//        else sr1 = (CURRENT_LATCHES.IR >> 9) & 0x07;
+        if (CURRENT_LATCHES.IR & 0x0010) {
+            if (CURRENT_LATCHES.IR & 0x0020) {
+                shf = Low16bits(rshf(sr1, (CURRENT_LATCHES.IR & 0x000F), (sr1 & 0x8000)));
+            } else shf = Low16bits(sr1 >> amount4);
+        } else shf = Low16bits(sr1 << amount4);
 
     }
 
@@ -992,6 +1021,10 @@ void latch_datapath_values() {
         printf("GetLD_CC");
         setcc(SEXT(BUS, 16));
     }
+
+
+
+
 
     enum PCMUX {
         PC_PLUS_2,
