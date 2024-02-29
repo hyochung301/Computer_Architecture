@@ -650,25 +650,27 @@ void cycle_memory() {
         NEXT_LATCHES.READY = 1;
     }
 
-    if(rw){
-        if(data_size){
-            // data size is word (MUX)
-            if(mar0){
-                we1 = 1;
+    if(rw == 1){
+        if(data_size == 0){
+            // data size is byte
+
+            if(mar0 == 0){
+                we0 = 1;
             }
             else{
-                we0 = 1;
+                we1 = 1;
             }
         }
         else{
-            // data size is byte
+            // data size is word (MUX)
+
             we0 = 1;
             we1 = 1;
         }
     }
 
     if(CURRENT_LATCHES.READY) {
-        if (we0 || we1) {
+        if (rw == 1) {
             if (we0 && we1) {
                 // store word
                 MEMORY[addr / 2][0] = CURRENT_LATCHES.MDR & 0x00FF;
@@ -677,8 +679,8 @@ void cycle_memory() {
                 // printf("lower byte: %x\n", CURRENT_LATCHES.MDR & 0x00FF);
                 MEMORY[addr / 2][0] = CURRENT_LATCHES.MDR & 0x00FF;
             } else if (we1) {
-                // printf("upper byte: %x\n", (CURRENT_LATCHES.MDR & 0xFF00));
-                MEMORY[addr / 2][1] = CURRENT_LATCHES.MDR & 0xFF00;
+
+                MEMORY[addr / 2][1] = CURRENT_LATCHES.MDR & 0x00FF;
             }
             NEXT_LATCHES.READY = 0;
             CYCLE = 0;
@@ -749,6 +751,19 @@ int adder_component(){
     }
     return addr1 + addr2;
 }
+
+int RSHF(int num, int shift, int arith) {
+    // arith = 1 for arithmetic right shift, 0 for logical right shift
+    if (arith) {
+        if (num & 0x8000) {
+            // If the number is negative, fill the leftmost bits with 1s after the shift
+            num = num - 65536; // Convert to negative integer value
+        }
+    }
+    num = num >> shift;
+    return num;
+}
+
 
 int marmux, pc, alu, shf, mdr;
 void eval_bus_drivers() {
@@ -832,26 +847,42 @@ void eval_bus_drivers() {
         }
         printf("ALU evaluated: %x\n", alu);
     }
+
+
     // value of SHF
     printf("SHF GATE: %d\n", GetGATE_SHF(CURRENT_LATCHES.MICROINSTRUCTION));
     if (GetGATE_SHF(CURRENT_LATCHES.MICROINSTRUCTION)){
         int sr1;
 
         // SR1 MUX
-        if(GetSR1MUX(CURRENT_LATCHES.MICROINSTRUCTION)){
+        if (GetSR1MUX(CURRENT_LATCHES.MICROINSTRUCTION)) {
             // IR[8:6]
             sr1 = CURRENT_LATCHES.REGS[(CURRENT_LATCHES.IR & 0x01C0) >> 6];
-        }
-        else{
+        } else {
             // REGS[IR[11:9]]
             sr1 = CURRENT_LATCHES.REGS[(CURRENT_LATCHES.IR & 0x0E00) >> 9];
         }
-
         int amount4 = CURRENT_LATCHES.IR & 0x000F;
         // SHF MUX
-        printf("SHF evaluated: %x\n", shf);
+        enum SHF {
+            LEFT, RIGHT, ARITH
+        };
+        switch ((CURRENT_LATCHES.IR & 0x0030) >> 4) {
+            case LEFT:
+                shf = Low16bits(sr1 << amount4);
+                break;
+            case RIGHT:
+                shf = Low16bits(RSHF(sr1, amount4, 0));
+                break;
+            case ARITH:
+                shf = Low16bits(
+                        RSHF(sr1, amount4, (((CURRENT_LATCHES.REGS[sr1]) & 0x8000) >> 15)));
+                break;
+        }
 
     }
+
+
 
     // value of MDR
     printf("MDR GATE: %d\n", GetGATE_MDR(CURRENT_LATCHES.MICROINSTRUCTION));
@@ -898,14 +929,84 @@ void drive_bus() {
 }
 
 
-void latch_datapath_values() {
+// void latch_datapath_values() {
 
-    /*
-     * Datapath routine for computing all functions that need to latch
-     * values in the data path at the end of this cycle.  Some values
-     * require sourcing the bus; therefore, this routine has to come
-     * after drive_bus.
-     */
+//     /*
+//      * Datapath routine for computing all functions that need to latch
+//      * values in the data path at the end of this cycle.  Some values
+//      * require sourcing the bus; therefore, this routine has to come
+//      * after drive_bus.
+//      */
+
+//     // value of MDR
+//     if (GetLD_MDR(CURRENT_LATCHES.MICROINSTRUCTION)) {
+//         if (GetMIO_EN(CURRENT_LATCHES.MICROINSTRUCTION)) {
+//             if (CURRENT_LATCHES.READY) {
+//                 int addr = CURRENT_LATCHES.MAR;
+//                 if (GetDATA_SIZE(CURRENT_LATCHES.MICROINSTRUCTION)) {
+//                     // word
+//                     // upper byte
+//                     NEXT_LATCHES.MDR = (MEMORY[addr / 2][1]) << 8;
+//                     // lower byte
+//                     NEXT_LATCHES.MDR = NEXT_LATCHES.MDR | MEMORY[addr / 2][0];
+//                 } else {
+//                     // byte
+//                     NEXT_LATCHES.MDR = SEXT(MEMORY[addr / 2][0], 8);
+//                 }
+//                 NEXT_LATCHES.READY = 0;
+//                 CYCLE = 0;
+//             }
+//         } else {
+//             // not MIO_EN
+//             NEXT_LATCHES.MDR = BUS;
+//         }
+//     }
+
+
+
+//     // value of REG
+//     if (GetLD_REG(CURRENT_LATCHES.MICROINSTRUCTION)) {
+//         // DRMUX = 0 -> IR[11:9], DRMUX = 1 -> 7
+//         int dr = (CURRENT_LATCHES.IR & 0x0E00) >> 9;
+//         if (GetDRMUX(CURRENT_LATCHES.MICROINSTRUCTION) == 0) {
+//             // IR[11:9]
+//             NEXT_LATCHES.REGS[dr] = BUS;
+//         } else {
+//             // 7
+//             NEXT_LATCHES.REGS[7] = BUS;
+//         }
+//     }
+
+// }
+
+
+void setcc(int cond){
+    int isNegative = (cond & 0x8000) != 0; // Check if bit 15 is set
+    int isZero = (cond & 0xFFFF) == 0; // Check if all bits are 0
+
+    if (isNegative){
+        NEXT_LATCHES.N = 1;
+        NEXT_LATCHES.Z = 0;
+        NEXT_LATCHES.P = 0;
+    }
+    else if (isZero){
+        NEXT_LATCHES.N = 0;
+        NEXT_LATCHES.Z = 1;
+        NEXT_LATCHES.P = 0;
+    }
+    else{
+        NEXT_LATCHES.N = 0;
+        NEXT_LATCHES.Z = 0;
+        NEXT_LATCHES.P = 1;
+    }
+}
+
+void latch_datapath_values() {
+    // value of MAR
+    if (GetLD_MAR(CURRENT_LATCHES.MICROINSTRUCTION)) {
+        NEXT_LATCHES.MAR = BUS;
+    }
+
 
     // value of MDR
     if (GetLD_MDR(CURRENT_LATCHES.MICROINSTRUCTION)) {
@@ -931,18 +1032,38 @@ void latch_datapath_values() {
         }
     }
 
-    // value of MAR
-    if (GetLD_MAR(CURRENT_LATCHES.MICROINSTRUCTION)) {
-        NEXT_LATCHES.MAR = BUS;
-    }
-
     // value of IR
     if (GetLD_IR(CURRENT_LATCHES.MICROINSTRUCTION)) {
         printf("IR LATCHED\n");
         NEXT_LATCHES.IR = BUS;
     }
 
-    // Enum for PCMUX values
+
+    memcpy(NEXT_LATCHES.REGS, CURRENT_LATCHES.REGS, sizeof(int)*8);
+
+    // value of REG
+    if (GetLD_REG(CURRENT_LATCHES.MICROINSTRUCTION)) {
+        // DRMUX = 0 -> IR[11:9], DRMUX = 1 -> 7
+        if (GetDRMUX(CURRENT_LATCHES.MICROINSTRUCTION) == 0) {
+            // IR[11:9]
+            int dr = (CURRENT_LATCHES.IR & 0x0E00) >> 9;
+            NEXT_LATCHES.REGS[dr] = BUS;
+        } else {
+            // 7
+            NEXT_LATCHES.REGS[7] = BUS;
+        }
+    }
+
+    // set condition codes
+    if (GetLD_CC(CURRENT_LATCHES.MICROINSTRUCTION)) {
+        printf("GetLD_CC");
+        setcc(SEXT(BUS, 16));
+    }
+
+
+
+
+
     enum PCMUX {
         PC_PLUS_2,
         BUS,
@@ -957,58 +1078,18 @@ void latch_datapath_values() {
         // Perform action based on PCMUX value
         switch (pcmux) {
             case PC_PLUS_2:
-                // PC + 2
                 NEXT_LATCHES.PC = CURRENT_LATCHES.PC + 2;
                 break;
             case BUS:
-                // BUS
                 NEXT_LATCHES.PC = BUS;
                 break;
             case ADDER:
-                // ADDER
                 NEXT_LATCHES.PC = adder_component();
                 break;
         }
     }
     else {
         NEXT_LATCHES.PC = CURRENT_LATCHES.PC;
-    }
-
-    // value of CC
-    if (GetLD_CC(CURRENT_LATCHES.MICROINSTRUCTION)) {
-        printf("GetLD_CC");
-        int value = SEXT(BUS, 16);
-        if (value == 0) {
-            NEXT_LATCHES.N = 0;
-            NEXT_LATCHES.Z = 1;
-            NEXT_LATCHES.P = 0;
-        } else if (value > 0) {
-            NEXT_LATCHES.N = 1;
-            NEXT_LATCHES.Z = 0;
-            NEXT_LATCHES.P = 0;
-        } else {
-            NEXT_LATCHES.N = 0;
-            NEXT_LATCHES.Z = 0;
-            NEXT_LATCHES.P = 1;
-        }
-    }
-    else{
-        NEXT_LATCHES.N = CURRENT_LATCHES.N;
-        NEXT_LATCHES.Z = CURRENT_LATCHES.Z;
-        NEXT_LATCHES.P = CURRENT_LATCHES.P;
-    }
-
-    // value of REG
-    if (GetLD_REG(CURRENT_LATCHES.MICROINSTRUCTION)) {
-        // DRMUX = 0 -> IR[11:9], DRMUX = 1 -> 7
-        int dr = (CURRENT_LATCHES.IR & 0x0E00) >> 9;
-        if (GetDRMUX(CURRENT_LATCHES.MICROINSTRUCTION) == 0) {
-            // IR[11:9]
-            NEXT_LATCHES.REGS[dr] = BUS;
-        } else {
-            // 7
-            NEXT_LATCHES.REGS[7] = BUS;
-        }
     }
 
 }
