@@ -752,27 +752,6 @@ int adder_component(){
     return addr1 + addr2;
 }
 
-//int RSHF(int num, int shift, int arith) {
-//    // arith = 1 for arithmetic right shift, 0 for logical right shift
-//    if (arith) {
-//        if (num & 0x8000) {
-//            // If the number is negative, fill the leftmost bits with 1s after the shift
-//            num = num - 65536; // Convert to negative integer value
-//        }
-//    }
-//    num = num >> shift;
-//    return num;
-//}
-int RSHF(int SR, int amt, int sign){
-    if(sign == 0)
-        return Low16bits(SR >> amt);
-    SR = Low16bits(~SR + 1);
-    SR = SR >> amt;
-    SR = ~SR;
-    return Low16bits(SR);
-}
-
-
 int marmux, pc, alu, shf, mdr;
 void eval_bus_drivers() {
     printf("Evaluating bus drivers\n");
@@ -1013,10 +992,6 @@ void latch_datapath_values() {
         printf("GetLD_CC");
         setcc(SEXT(BUS, 16));
     }
-
-
-
-
 
     enum PCMUX {
         PC_PLUS_2,
