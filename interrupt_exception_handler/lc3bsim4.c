@@ -1,8 +1,3 @@
-/*
-    Name 1: Hyokwon Chung
-    UTEID 1: HC27426
-*/
-
 /***************************************************************/
 /*                                                             */
 /*   LC-3b Simulator                                           */
@@ -12,9 +7,9 @@
 /*                                                             */
 /***************************************************************/
 
-#include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 /***************************************************************/
 /*                                                             */
@@ -80,6 +75,7 @@ enum CS_BITS {
     R_W,
     DATA_SIZE,
     LSHF1,
+/* MODIFY: you have to add all your new control signals */
     CONTROL_STORE_BITS
 } CS_BITS;
 
@@ -114,6 +110,7 @@ int GetMIO_EN(int *x)        { return(x[MIO_EN]); }
 int GetR_W(int *x)           { return(x[R_W]); }
 int GetDATA_SIZE(int *x)     { return(x[DATA_SIZE]); }
 int GetLSHF1(int *x)         { return(x[LSHF1]); }
+/* MODIFY: you can add more Get functions for your new control signals */
 
 /***************************************************************/
 /* The control store rom.                                      */
@@ -124,9 +121,9 @@ int CONTROL_STORE[CONTROL_STORE_ROWS][CONTROL_STORE_BITS];
 /* Main memory.                                                */
 /***************************************************************/
 /* MEMORY[A][0] stores the least significant byte of word at word address A
-   MEMORY[A][1] stores the most significant byte of word at word address A 
-   There are two write enable signals, one for each byte. WE0 is used for 
-   the least significant byte of a word. WE1 is used for the most significant 
+   MEMORY[A][1] stores the most significant byte of word at word address A
+   There are two write enable signals, one for each byte. WE0 is used for
+   the least significant byte of a word. WE1 is used for the most significant
    byte of a word. */
 
 #define WORDS_IN_MEM    0x08000
@@ -165,6 +162,13 @@ typedef struct System_Latches_Struct{
     int MICROINSTRUCTION[CONTROL_STORE_BITS]; /* The microintruction */
 
     int STATE_NUMBER; /* Current State Number - Provided for debugging */
+
+/* For lab 4 */
+    int INTV; /* Interrupt vector register */
+    int EXCV; /* Exception vector register */
+    int SSP; /* Initial value of system stack pointer */
+/* MODIFY: You may add system latches that are required by your implementation */
+
 } System_Latches;
 
 /* Data Structure for Latch */
@@ -270,17 +274,17 @@ void go() {
 void mdump(FILE * dumpsim_file, int start, int stop) {
     int address; /* this is a byte address */
 
-    printf("\nMemory content [0x%.4x..0x%.4x] :\n", start, stop);
+    printf("\nMemory content [0x%0.4x..0x%0.4x] :\n", start, stop);
     printf("-------------------------------------\n");
     for (address = (start >> 1); address <= (stop >> 1); address++)
-        printf("  0x%.4x (%d) : 0x%.2x%.2x\n", address << 1, address << 1, MEMORY[address][1], MEMORY[address][0]);
+        printf("  0x%0.4x (%d) : 0x%0.2x%0.2x\n", address << 1, address << 1, MEMORY[address][1], MEMORY[address][0]);
     printf("\n");
 
     /* dump the memory contents into the dumpsim file */
-    fprintf(dumpsim_file, "\nMemory content [0x%.4x..0x%.4x] :\n", start, stop);
+    fprintf(dumpsim_file, "\nMemory content [0x%0.4x..0x%0.4x] :\n", start, stop);
     fprintf(dumpsim_file, "-------------------------------------\n");
     for (address = (start >> 1); address <= (stop >> 1); address++)
-        fprintf(dumpsim_file, " 0x%.4x (%d) : 0x%.2x%.2x\n", address << 1, address << 1, MEMORY[address][1], MEMORY[address][0]);
+        fprintf(dumpsim_file, " 0x%0.4x (%d) : 0x%0.2x%0.2x\n", address << 1, address << 1, MEMORY[address][1], MEMORY[address][0]);
     fprintf(dumpsim_file, "\n");
     fflush(dumpsim_file);
 }
@@ -299,32 +303,32 @@ void rdump(FILE * dumpsim_file) {
     printf("\nCurrent register/bus values :\n");
     printf("-------------------------------------\n");
     printf("Cycle Count  : %d\n", CYCLE_COUNT);
-    printf("PC           : 0x%.4x\n", CURRENT_LATCHES.PC);
-    printf("IR           : 0x%.4x\n", CURRENT_LATCHES.IR);
-    printf("STATE_NUMBER : 0x%.4x\n\n", CURRENT_LATCHES.STATE_NUMBER);
-    printf("BUS          : 0x%.4x\n", BUS);
-    printf("MDR          : 0x%.4x\n", CURRENT_LATCHES.MDR);
-    printf("MAR          : 0x%.4x\n", CURRENT_LATCHES.MAR);
+    printf("PC           : 0x%0.4x\n", CURRENT_LATCHES.PC);
+    printf("IR           : 0x%0.4x\n", CURRENT_LATCHES.IR);
+    printf("STATE_NUMBER : 0x%0.4x\n\n", CURRENT_LATCHES.STATE_NUMBER);
+    printf("BUS          : 0x%0.4x\n", BUS);
+    printf("MDR          : 0x%0.4x\n", CURRENT_LATCHES.MDR);
+    printf("MAR          : 0x%0.4x\n", CURRENT_LATCHES.MAR);
     printf("CCs: N = %d  Z = %d  P = %d\n", CURRENT_LATCHES.N, CURRENT_LATCHES.Z, CURRENT_LATCHES.P);
     printf("Registers:\n");
     for (k = 0; k < LC_3b_REGS; k++)
-        printf("%d: 0x%.4x\n", k, CURRENT_LATCHES.REGS[k]);
+        printf("%d: 0x%0.4x\n", k, CURRENT_LATCHES.REGS[k]);
     printf("\n");
 
     /* dump the state information into the dumpsim file */
     fprintf(dumpsim_file, "\nCurrent register/bus values :\n");
     fprintf(dumpsim_file, "-------------------------------------\n");
     fprintf(dumpsim_file, "Cycle Count  : %d\n", CYCLE_COUNT);
-    fprintf(dumpsim_file, "PC           : 0x%.4x\n", CURRENT_LATCHES.PC);
-    fprintf(dumpsim_file, "IR           : 0x%.4x\n", CURRENT_LATCHES.IR);
-    fprintf(dumpsim_file, "STATE_NUMBER : 0x%.4x\n\n", CURRENT_LATCHES.STATE_NUMBER);
-    fprintf(dumpsim_file, "BUS          : 0x%.4x\n", BUS);
-    fprintf(dumpsim_file, "MDR          : 0x%.4x\n", CURRENT_LATCHES.MDR);
-    fprintf(dumpsim_file, "MAR          : 0x%.4x\n", CURRENT_LATCHES.MAR);
+    fprintf(dumpsim_file, "PC           : 0x%0.4x\n", CURRENT_LATCHES.PC);
+    fprintf(dumpsim_file, "IR           : 0x%0.4x\n", CURRENT_LATCHES.IR);
+    fprintf(dumpsim_file, "STATE_NUMBER : 0x%0.4x\n\n", CURRENT_LATCHES.STATE_NUMBER);
+    fprintf(dumpsim_file, "BUS          : 0x%0.4x\n", BUS);
+    fprintf(dumpsim_file, "MDR          : 0x%0.4x\n", CURRENT_LATCHES.MDR);
+    fprintf(dumpsim_file, "MAR          : 0x%0.4x\n", CURRENT_LATCHES.MAR);
     fprintf(dumpsim_file, "CCs: N = %d  Z = %d  P = %d\n", CURRENT_LATCHES.N, CURRENT_LATCHES.Z, CURRENT_LATCHES.P);
     fprintf(dumpsim_file, "Registers:\n");
     for (k = 0; k < LC_3b_REGS; k++)
-        fprintf(dumpsim_file, "%d: 0x%.4x\n", k, CURRENT_LATCHES.REGS[k]);
+        fprintf(dumpsim_file, "%d: 0x%0.4x\n", k, CURRENT_LATCHES.REGS[k]);
     fprintf(dumpsim_file, "\n");
     fflush(dumpsim_file);
 }
@@ -438,13 +442,13 @@ void init_control_store(char *ucode_filename) {
     printf("\n");
 }
 
-/************************************************************/
-/*                                                          */
-/* Procedure : init_memory                                  */
-/*                                                          */
-/* Purpose   : Zero out the memory array                    */
-/*                                                          */
-/************************************************************/
+/***************************************************************/
+/*                                                             */
+/* Procedure : init_memory                                     */
+/*                                                             */
+/* Purpose   : Zero out the memory array                       */
+/*                                                             */
+/***************************************************************/
 void init_memory() {
     int i;
 
@@ -508,18 +512,18 @@ void load_program(char *program_filename) {
 /*             and set up initial state of the machine.        */
 /*                                                             */
 /***************************************************************/
-void initialize(char *ucode_filename, char *program_filename, int num_prog_files) {
+void initialize(char *argv[], int num_prog_files) {
     int i;
-    init_control_store(ucode_filename);
+    init_control_store(argv[1]);
 
     init_memory();
     for ( i = 0; i < num_prog_files; i++ ) {
-        load_program(program_filename);
-        while(*program_filename++ != '\0');
+        load_program(argv[i + 2]);
     }
     CURRENT_LATCHES.Z = 1;
     CURRENT_LATCHES.STATE_NUMBER = INITIAL_STATE_NUMBER;
     memcpy(CURRENT_LATCHES.MICROINSTRUCTION, CONTROL_STORE[INITIAL_STATE_NUMBER], sizeof(int)*CONTROL_STORE_BITS);
+    CURRENT_LATCHES.SSP = 0x3000; /* Initial value of system stack pointer */
 
     NEXT_LATCHES = CURRENT_LATCHES;
 
@@ -543,7 +547,7 @@ int main(int argc, char *argv[]) {
 
     printf("LC-3b Simulator\n\n");
 
-    initialize(argv[1], argv[2], argc - 2);
+    initialize(argv, argc - 2);
 
     if ( (dumpsim_file = fopen( "dumpsim", "w" )) == NULL ) {
         printf("Error: Can't open dumpsim file\n");
@@ -556,7 +560,11 @@ int main(int argc, char *argv[]) {
 }
 
 /***************************************************************/
-/* Do not modify the above code.
+/* Do not modify the above code, except for the places indicated
+   with a "MODIFY:" comment.
+
+   Do not modify the rdump and mdump functions.
+
    You are allowed to use the following global variables in your
    code. These are defined above.
 
@@ -615,8 +623,8 @@ void eval_micro_sequencer() {
         next_addr = j5 + j4 + j3 + (or_branch << 2) + (or_ready <<1) + or_addr_mode;
         NEXT_LATCHES.STATE_NUMBER = next_addr;
 
-        }
-    
+    }
+
     for (int i = 0; i < CONTROL_STORE_BITS; i++){
         NEXT_LATCHES.MICROINSTRUCTION[i] = CONTROL_STORE[next_addr][i];
         printf("%d", NEXT_LATCHES.MICROINSTRUCTION[i]);
@@ -679,7 +687,7 @@ void cycle_memory() {
                 // printf("lower byte: %x\n", CURRENT_LATCHES.MDR & 0x00FF);
                 MEMORY[addr / 2][0] = CURRENT_LATCHES.MDR & 0x00FF;
             } else if (we1) {
-                
+
                 MEMORY[addr / 2][1] = CURRENT_LATCHES.MDR & 0x00FF;
             }
             NEXT_LATCHES.READY = 0;
@@ -687,7 +695,6 @@ void cycle_memory() {
         }
     }
 }
-
 
 int SEXT(int num, int bits){
     // sign extend bits num of bits
@@ -751,7 +758,6 @@ int adder_component(){
     }
     return addr1 + addr2;
 }
-
 
 int rshf(int num, int shift, int arith) {
     // arith = 1 for arithmetic right shift, 0 for logical right shift
@@ -964,6 +970,13 @@ void setcc(int cond){
 }
 
 void latch_datapath_values() {
+
+    /*
+     * Datapath routine for computing all functions that need to latch
+     * values in the data path at the end of this cycle.  Some values
+     * require sourcing the bus; therefore, this routine has to come
+     * after drive_bus.
+     */
     // value of MAR
     if (GetLD_MAR(CURRENT_LATCHES.MICROINSTRUCTION)) {
         NEXT_LATCHES.MAR = Low16bits(BUS);
